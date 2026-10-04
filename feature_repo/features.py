@@ -17,6 +17,7 @@ from streamrank.features.definitions import (
     USER_FEATURES,
     Aggregate,
     FeatureSet,
+    value_type,
 )
 
 FEATURES_DIR = Path(
@@ -36,7 +37,7 @@ ENTITIES = {"user": user, "item": item}
 
 
 def _dtype(spec: Aggregate) -> PrimitiveFeastType:
-    return Int64 if spec.kind == "count" or spec.column == "ts" else Float64
+    return Int64 if value_type(spec) == "int64" else Float64
 
 
 def _view(fs: FeatureSet) -> FeatureView:

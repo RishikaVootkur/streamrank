@@ -39,6 +39,11 @@ class Aggregate:
             raise ValueError(f"{self.name}: window_days must be at least 1")
 
 
+def value_type(spec: Aggregate) -> Literal["int64", "float64"]:
+    """Storage type of an aggregate: counts and timestamps are integers, the rest floats."""
+    return "int64" if spec.kind == "count" or spec.column == "ts" else "float64"
+
+
 @dataclass(frozen=True)
 class SmoothedRatio:
     """(numerator + prior * weight) / (denominator + weight): a shrunk mean or rate."""

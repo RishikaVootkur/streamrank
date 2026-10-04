@@ -1,6 +1,7 @@
 """Access to the Feast feature store defined in `feature_repo/`."""
 
 import argparse
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,7 @@ from typing import Any
 import pandas as pd
 from feast import FeatureStore
 
+from streamrank.common.config import get_settings
 from streamrank.features.definitions import ITEM_FEATURES, USER_FEATURES, FeatureSet
 
 DEFAULT_REPO = Path(__file__).resolve().parents[3] / "feature_repo"
@@ -27,7 +29,13 @@ ITEM_REFS = feature_refs(ITEM_FEATURES) + [f"item_content:{n}" for n in ITEM_CON
 
 
 def open_store(repo_path: Path = DEFAULT_REPO) -> FeatureStore:
-    """Open the feature store; the Redis address comes from REDIS_CONNECTION_STRING."""
+    """Open the feature store.
+
+    The Redis address comes from REDIS_CONNECTION_STRING, defaulting to the configured
+    Redis host and port.
+    """
+    settings = get_settings()
+    os.environ.setdefault("REDIS_CONNECTION_STRING", f"{settings.redis_host}:{settings.redis_port}")
     return FeatureStore(repo_path=str(repo_path))
 
 

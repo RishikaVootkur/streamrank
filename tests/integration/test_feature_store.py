@@ -1,6 +1,5 @@
 """Feast over reference feature snapshots: online values and point-in-time joins."""
 
-import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +23,7 @@ from streamrank.features.definitions import (
     day_of,
     reference_snapshots,
     snapshot,
+    value_type,
 )
 from streamrank.features.store import (
     DEFAULT_REPO,
@@ -38,9 +38,12 @@ from streamrank.features.store import (
 pytestmark = pytest.mark.integration
 
 
+FROM_DAY = 17_000  # 2016-07-18: snapshots are trimmed here, as `make features` does
+
+
 def _snapshot_frame(fs: FeatureSet, events: list[Event]) -> pl.DataFrame:
-    rows = reference_snapshots(fs, events)
-    counts = {a.name for a in fs.aggregates if a.kind == "count" or a.column == "ts"}
+    rows = reference_snapshots(fs, events, from_day=FROM_DAY)
+    counts = {a.name for a in fs.aggregates if value_type(a) == "int64"}
     schema = {fs.key: pl.Int64, "snapshot_day": pl.Int64}
     schema |= {n: pl.Int64 if n in counts else pl.Float64 for n in fs.names}
     df = pl.DataFrame(rows, schema=schema)
@@ -58,6 +61,10 @@ def events() -> list[Event]:
     return [Event(*row) for row in r.select("user_id", "item_id", "rating", "ts").iter_rows()]
 
 
+def _genres(item: int) -> list[str]:
+    return ["Drama"] if item % 2 else ["Comedy", "Romance"]
+
+
 @pytest.fixture(scope="module")
 def repo(tmp_path_factory: pytest.TempPathFactory, events: list[Event]) -> Iterator[Path]:
     root = tmp_path_factory.mktemp("feast")
@@ -70,7 +77,7 @@ def repo(tmp_path_factory: pytest.TempPathFactory, events: list[Event]) -> Itera
         {
             "item_id": items,
             "item_year": [1990 + i % 30 for i in items],
-            "item_genres": [["Drama"] if i % 2 else ["Comedy", "Romance"] for i in items],
+            "item_genres": [_genres(i) for i in items],
             "event_timestamp": [datetime(1970, 1, 1, tzinfo=UTC)] * len(items),
         }
     ).write_parquet(features / "item_content.parquet")
@@ -78,22 +85,20 @@ def repo(tmp_path_factory: pytest.TempPathFactory, events: list[Event]) -> Itera
     repo = root / "repo"
     repo.mkdir()
     shutil.copy(DEFAULT_REPO / "features.py", repo / "features.py")
+    # The real config, with a separate project and registry so real keys are untouched.
+    config = (DEFAULT_REPO / "feature_store.yaml").read_text()
+    config = config.replace("project: streamrank", "project: streamrank_test")
+    config = config.replace("../data/feast/registry.db", str(root / "registry.db"))
+    assert "${REDIS_CONNECTION_STRING}" in config
+    (repo / "feature_store.yaml").write_text(config)
     settings = get_settings()
-    (repo / "feature_store.yaml").write_text(
-        "project: streamrank_test\n"
-        "provider: local\n"
-        f"registry: {root / 'registry.db'}\n"
-        "offline_store:\n  type: duckdb\n"
-        "online_store:\n  type: redis\n"
-        f"  connection_string: {settings.redis_host}:{settings.redis_port}\n"
-        "entity_key_serialization_version: 3\n"
-    )
-    env = {**os.environ, "STREAMRANK_FEATURES_DIR": str(features)}
-    feast = Path(sys.executable).parent / "feast"
-    subprocess.run([str(feast), "apply"], cwd=repo, env=env, check=True, capture_output=True)
-    os.environ["STREAMRANK_FEATURES_DIR"] = str(features)
-    yield repo
-    subprocess.run([str(feast), "teardown"], cwd=repo, env=env, check=False, capture_output=True)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("STREAMRANK_FEATURES_DIR", str(features))
+        mp.setenv("REDIS_CONNECTION_STRING", f"{settings.redis_host}:{settings.redis_port}")
+        feast = Path(sys.executable).parent / "feast"
+        subprocess.run([str(feast), "apply"], cwd=repo, check=True, capture_output=True)
+        yield repo
+        subprocess.run([str(feast), "teardown"], cwd=repo, check=False, capture_output=True)
 
 
 def _close(a: object, b: object) -> bool:
@@ -104,25 +109,28 @@ def _close(a: object, b: object) -> bool:
 
 def test_online_store_serves_latest_snapshot(repo: Path, events: list[Event]) -> None:
     store = open_store(repo)
-    materialize(store, datetime(1990, 1, 1, tzinfo=UTC), datetime(2030, 1, 1, tzinfo=UTC))
-    users = sorted({e.user_id for e in events})[:15]
-    got = online_features(store, USER_REFS, "user_id", users)
-    for i, user in enumerate(users):
-        evs = [e for e in events if e.user_id == user]
-        # After the last expiry every count window is empty, the snapshot is "all history".
-        expected = snapshot(USER_FEATURES, evs, 10**6)
-        for name in USER_FEATURES.names:
-            assert _close(got[name][i], expected[name]), (user, name)
-    items = sorted({e.item_id for e in events})[:5]
+    start = datetime.fromtimestamp(FROM_DAY * SECONDS_PER_DAY, tz=UTC)
+    materialize(store, start, datetime(2030, 1, 1, tzinfo=UTC))
+    # After the last expiry every count window is empty: the snapshot is "all history".
+    for fs, refs in ((USER_FEATURES, USER_REFS), (ITEM_FEATURES, ITEM_REFS)):
+        ids = sorted({getattr(e, fs.key) for e in events})[:15]
+        got = online_features(store, refs, fs.key, ids)
+        for i, key in enumerate(ids):
+            evs = [e for e in events if getattr(e, fs.key) == key]
+            expected = snapshot(fs, evs, 10**6)
+            for name in fs.names:
+                assert _close(got[name][i], expected[name]), (fs.entity, key, name)
+    items = sorted({e.item_id for e in events})[:6]
     content = online_features(store, ITEM_REFS, "item_id", items)
     assert content["item_year"] == [1990 + i % 30 for i in items]
-    assert content["item_genres"][1] in (["Drama"], ["Comedy", "Romance"])
+    assert content["item_genres"] == [_genres(i) for i in items]
 
 
 def test_historical_join_is_point_in_time(repo: Path, events: list[Event]) -> None:
     store = open_store(repo)
     rng = np.random.default_rng(0)
-    sample = [events[i] for i in rng.choice(len(events), size=40, replace=False)]
+    late = [e for e in events if day_of(e.ts) >= FROM_DAY]
+    sample = [late[i] for i in rng.choice(len(late), size=40, replace=False)]
     # Query at each event's own time and a few days later; neither may see that day's events.
     times = [e.ts for e in sample] + [e.ts + 3 * SECONDS_PER_DAY + 7 for e in sample]
     users = [e.user_id for e in sample] * 2

@@ -26,6 +26,7 @@ from streamrank.features.definitions import (
     SECONDS_PER_DAY,
     Aggregate,
     FeatureSet,
+    value_type,
 )
 
 log = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def _windowed(spec: Aggregate, key: str) -> Column:
     merged = _MERGE[spec.kind](F.col(spec.name)).over(w)
     if spec.kind in ("count", "sum"):
         merged = F.coalesce(merged, F.lit(0))
-    cast = "bigint" if spec.kind == "count" or spec.column == "ts" else "double"
+    cast = {"int64": "bigint", "float64": "double"}[value_type(spec)]
     return merged.cast(cast).alias(spec.name)
 
 

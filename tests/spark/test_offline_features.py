@@ -18,6 +18,7 @@ from streamrank.features.definitions import (
     Event,
     FeatureSet,
     reference_snapshots,
+    value_type,
 )
 
 
@@ -52,6 +53,12 @@ def _check_parity(
     path = tmp / "ratings.parquet"
     ratings.write_parquet(path)
     got_df = compute(spark.read.parquet(str(path)), fs, from_day)
+    # Types must match what the Feast feature views declare (same `value_type` source).
+    types = dict(got_df.dtypes)
+    for a in fs.aggregates:
+        assert types[a.name] == {"int64": "bigint", "float64": "double"}[value_type(a)], a.name
+    for r in fs.ratios:
+        assert types[r.name] == "double", r.name
     got = {(r[fs.key], r["snapshot_day"]): r.asDict() for r in got_df.collect()}
     assert got.keys() == expected.keys()
     for key, exp in expected.items():

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels: {{- include "streamrank.labels" . | nindent 4 }}
+    app.kubernetes.io/name: api
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  # With autoscaling on, the HPA owns the replica count; setting it here would conflict.
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: {{ .Values.api.image }}
+          imagePullPolicy: {{ .Values.api.pullPolicy }}
+          env:
+            - name: REDIS_HOST
+              value: {{ .Release.Name }}-redis
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_CONNECTION_STRING
+              value: {{ .Release.Name }}-redis:6379
+            - name: ENGINE_THREADS
+              value: {{ .Values.api.engineThreads | quote }}
+          ports:
+            - containerPort: 8000
+          # Generous timeouts: a pod saturated before the HPA adds replicas answers probes
+          # slowly, and restarting it then would only push its load onto the others.
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: serving
+              mountPath: /artifacts/serving
+              readOnly: true
+            - name: feast-registry
+              mountPath: /app/data/feast
+              readOnly: true
+      volumes:
+        - name: serving
+          hostPath:
+            path: {{ .Values.hostPaths.serving }}
+            type: Directory
+        - name: feast-registry
+          hostPath:
+            path: {{ .Values.hostPaths.feastRegistry }}
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  labels: {{- include "streamrank.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: {{ .Values.api.service.nodePort }}

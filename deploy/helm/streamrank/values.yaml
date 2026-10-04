@@ -1,0 +1,35 @@
+api:
+  image: streamrank-api:local
+  pullPolicy: Never  # images are loaded into kind with `kind load docker-image`
+  replicas: 1
+  # Requests the API works on at once; the rest wait in the event loop (see app.py).
+  engineThreads: 8
+  resources:
+    requests:
+      cpu: 500m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+  service:
+    nodePort: 30080
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 60
+
+redis:
+  image: redis:8.8.3-alpine
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      memory: 1536Mi
+
+# Host paths inside the kind node (see deploy/kind/cluster.yaml.tpl).
+hostPaths:
+  serving: /mnt/streamrank/serving
+  feastRegistry: /mnt/streamrank/feast
+  redisData: /mnt/streamrank/redis

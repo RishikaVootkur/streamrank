@@ -24,6 +24,7 @@ train = [
     "lightgbm>=4.7.0",
     "mlflow>=3.16.1",
     "onnx>=1.23.1",
+    "onnxmltools>=1.16.0",
     "onnxscript>=0.7.2",
     "optuna>=5.0.0",
     "threadpoolctl>=3.7.0",
@@ -106,5 +107,5 @@ show_missing = true
 skip_covered = true
 
 [[tool.mypy.overrides]]
-module = ["implicit.*", "onnxruntime.*"]
+module = ["implicit.*", "onnxruntime.*", "onnxmltools.*"]
 ignore_missing_imports = true

@@ -6,8 +6,9 @@ and fp32, which is safe on Apple MPS. Both towers output L2-normalized vectors, 
 dot product divided by a temperature.
 
 Training uses a sampled softmax over the unique target items in the batch plus uniformly
-drawn random items (mixed negative sampling), with log-Q correction so popular items are
-not over-penalized for appearing often as in-batch negatives.
+drawn random items (mixed negative sampling), with log-Q correction (subtracting the log
+probability that an item is among the candidates) so popular items are not over-penalized
+for appearing often as in-batch negatives.
 """
 
 import math
@@ -160,6 +161,18 @@ class UserTower(nn.Module):
         return F.normalize(self.out(self.ln(x)), dim=-1)
 
 
+def log_inclusion(q: Tensor, n_pos: int, n_random: int, n_items: int) -> Tensor:
+    """Log probability that an item is among the de-duplicated candidates.
+
+    An item is included if at least one of the `n_pos` in-batch targets (drawn with item
+    frequency `q`) or one of the `n_random` uniform draws picks it. Using inclusion
+    probability (at most 1) avoids over-correcting popular items, whose expected count
+    `n_pos * q` can far exceed 1 after de-duplication.
+    """
+    log_miss = n_pos * torch.log1p(-q) + n_random * math.log1p(-1.0 / n_items)
+    return torch.log(-torch.expm1(log_miss).clamp(max=-1e-12))
+
+
 class TwoTower(nn.Module):
     """Both towers plus the training loss."""
 
@@ -211,8 +224,9 @@ class TwoTower(nn.Module):
         cands = torch.cat([in_batch, rand])
         logits = users @ self.item_tower(cands).T / cfg.temperature
         if cfg.use_logq:
-            expected = n_pos * self.target_freq[cands] + cfg.n_random_negatives / self.n_items
-            logits = logits - torch.log(expected.clamp(min=1e-12))
+            logits = logits - log_inclusion(
+                self.target_freq[cands], n_pos, cfg.n_random_negatives, self.n_items
+            )
         # A random draw equal to the row's own positive is not a negative.
         hit = rand.unsqueeze(0) == pos_items.unsqueeze(1)
         logits[:, in_batch.numel() :] = logits[:, in_batch.numel() :].masked_fill(hit, _MASKED)

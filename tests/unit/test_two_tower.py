@@ -10,6 +10,7 @@ from streamrank.models.two_tower import (
     attention_mask,
     cosine_lr,
     count_parameters,
+    log_inclusion,
     pick_device,
 )
 
@@ -145,3 +146,14 @@ def test_schedule_and_device() -> None:
     assert cosine_lr(9, 100, 10) == pytest.approx(1.0)
     assert cosine_lr(100, 100, 10) == pytest.approx(0.1)
     assert pick_device().type in ("mps", "cpu")
+
+
+def test_log_inclusion_is_a_bounded_log_probability() -> None:
+    q = torch.tensor([1e-6, 1e-3, 0.05, 0.5])
+    out = log_inclusion(q, n_pos=8192, n_random=2048, n_items=65_000)
+    assert (out <= 0).all()
+    assert torch.all(out[1:] >= out[:-1])  # more frequent, more likely included
+    assert out[-1] > -1e-6  # a very frequent item is almost surely included
+    # Rare items: close to the expected-count approximation.
+    approx = torch.log(8192 * q[0] + 2048 / 65_000)
+    assert torch.isclose(out[0], approx, rtol=1e-2)

@@ -173,3 +173,36 @@ def test_load_recommender_restores_scores(
     assert saved["users"].shape == (setup.targets.user_rows.size, SMALL.dim)
     np.testing.assert_array_equal(saved["user_rows"], setup.targets.user_rows)
     np.testing.assert_array_equal(saved["item_ids"], setup.train.item_ids)
+
+
+def test_test_partition_trains_fixed_epochs(
+    data: tuple[Path, pl.DataFrame, pl.DataFrame], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    split_dir, movies, tags = data
+    processed = tmp_path / "data" / "processed"
+    processed.mkdir(parents=True)
+    movies.write_parquet(processed / "movies.parquet")
+    tags.write_parquet(processed / "tags.parquet")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    from streamrank.common.config import get_settings  # noqa: PLC0415
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "streamrank.models.train_retrieval.pick_device", lambda: torch.device("cpu")
+    )
+    with pytest.raises(ValueError, match="stop-after"):
+        run(split_dir, tmp_path / "bad", SMALL, TrainConfig(epochs=2), partition="test")
+    summary = run(
+        split_dir,
+        tmp_path / "out",
+        SMALL,
+        TrainConfig(epochs=4, stop_after=2, batch_size=64, warmup_steps=2),
+        n_resamples=20,
+        partition="test",
+        compare_ease=False,
+    )
+    get_settings.cache_clear()
+    assert summary["partition"] == "test"
+    assert summary["n_early_stop_users"] == 0
+    assert len(summary["history"]) == 2
+    assert summary["heldout"]["n_users"] == summary["result"]["n_users"]

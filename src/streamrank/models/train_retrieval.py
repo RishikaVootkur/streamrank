@@ -357,8 +357,10 @@ def run(
     movies = pl.read_parquet(processed / "movies.parquet")
     tags = pl.read_parquet(processed / "tags.parquet")
     if partition == "test":
-        if early_stop_split is not None or train_cfg.stop_after < 1:
-            raise ValueError("the test run takes a fixed --stop-after and no early stopping")
+        if early_stop_split is not None or not 1 <= train_cfg.stop_after <= train_cfg.epochs:
+            raise ValueError(
+                "the test run takes no early stopping and 1 <= --stop-after <= --epochs"
+            )
         es_ids = np.zeros(0, dtype=np.int64)
     else:
         es_ids = early_stop_users(setup, early_stop_split, train_cfg.seed)
@@ -376,6 +378,8 @@ def run(
     t0 = time.perf_counter()
     rec.fit(setup.train)
     fit_s = time.perf_counter() - t0
+    if partition == "test" and len(rec.history) != train_cfg.stop_after:
+        raise RuntimeError("the time limit ended the test run before --stop-after epochs")
     recs = recommend(rec, setup.targets.user_rows, setup.targets.exclude, 200)
     result = evaluate_lists(
         rec.name,

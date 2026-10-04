@@ -10,6 +10,9 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M3 PySpark offline features and Feast
 - [x] M4 Two-tower retrieval with sequential user tower
 - [ ] M5 FAISS index
+
+- [ ] M4 Two-tower retrieval with sequential user tower
+- [x] M5 FAISS index
 - [ ] M6 LightGBM LambdaMART ranker
 - [ ] M7 Serving API
 - [x] M8 Streaming session features
@@ -64,6 +67,10 @@ Validation users outside the 10% sample (5,816 users), full catalog, mean with 9
 | Difference | -0.0303 [-0.0368, -0.0235] | | |
 
 Ablations (10% sample, Recall@100): full 0.2306; no sequence encoder 0.1913; no content features 0.1834; no log-Q 0.1792; uniform training windows 0.1937.
+
+### FAISS index (M5)
+
+HNSW (M = 16, efSearch = 400) over 65,723 item vectors: recall@200 against exact search 0.9992, downstream Recall@100 unchanged from exact (0.2569), single-thread latency p50 0.27 ms and p99 0.39 ms. Recall versus latency for HNSW and IVF-PQ settings in [faiss-benchmark.md](faiss-benchmark.md); choice in [ADR 0007](adr/0007-faiss-index.md).
 
 ## Blocked or changed
 

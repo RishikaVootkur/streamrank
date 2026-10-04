@@ -30,6 +30,7 @@ def test_ndcg_by_user_matches_hand_computation() -> None:
             "label": [0, 1, 0, 1, 0],
             "n_relevant": [2, 2, 2, 1, 1],
             "s": [3.0, 2.0, 1.0, 0.0, 1.0],
+            "retrieval_rank": [1, 2, 3, 1, 2],
         }
     )
     got = ndcg_by_user(df, "s", k=10)
@@ -127,6 +128,7 @@ def _synthetic(tmp_path: Path, n_users: int = 300, k: int = 30) -> Path:
     df = pl.DataFrame(rows)
     path = tmp_path / "ranker_features_val.parquet"
     df.write_parquet(path)
+    np.save(tmp_path / "early_stop_users.npy", np.array([0, 1]))
     write_manifest(
         tmp_path, stage="ranker_features", config={}, data_hash="synthetic", seed=0, outputs=[path]
     )
@@ -141,7 +143,6 @@ def test_ranker_learns_and_reports_lift(tmp_path: Path) -> None:
         features,
         out,
         cfg,
-        early_stop_users=np.array([0, 1]),
         n_resamples=100,
         doc_dir=tmp_path / "docs",
     )
@@ -172,6 +173,7 @@ def test_build_features_cli_uses_cutoff_stats(
         }
     )
     cand.write_parquet(cand_dir / "candidates_val.parquet")
+    np.save(cand_dir / "early_stop_users.npy", np.array([5]))
     write_manifest(
         cand_dir,
         stage="candidates",
@@ -211,3 +213,4 @@ def test_build_features_cli_uses_cutoff_stats(
     out = pl.read_parquet(path)
     assert out.height == 2 and set(FEATURES) <= set(out.columns)
     assert verify_outputs(tmp_path / "out")["stage"] == "ranker_features"
+    assert np.load(tmp_path / "out" / "early_stop_users.npy").tolist() == [5]

@@ -42,6 +42,15 @@ def export_candidates(
         pl.read_parquet(processed / "tags.parquet"),
         torch.device("cpu"),
     )
+    if rec.model is None or rec.model.n_items != setup.train.n_items:
+        raise ValueError(
+            f"model catalog does not match the {partition!r} catalog; use a model trained "
+            "on that partition's history"
+        )
+    early_src = model_dir / "early_stop_users.npy"
+    if not early_src.exists():
+        raise FileNotFoundError(f"{early_src} is missing; retrain with the current trainer")
+    early = np.load(early_src)
     targets = setup.targets
     frames = []
     for start in range(0, targets.user_rows.size, 1024):
@@ -70,6 +79,8 @@ def export_candidates(
     begin_stage(out_dir)
     path = out_dir / f"candidates_{partition}.parquet"
     write_parquet_atomic(pl.concat(frames), path)
+    early_path = out_dir / "early_stop_users.npy"
+    np.save(early_path, early)
     manifest = verify_outputs(model_dir)
     write_manifest(
         out_dir,
@@ -83,7 +94,7 @@ def export_candidates(
         },
         data_hash=str(manifest["data_hash"]),
         seed=manifest["seed"],
-        outputs=[path],
+        outputs=[path, early_path],
     )
     return path
 

@@ -67,7 +67,11 @@ def _matrix(df: pl.DataFrame) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.i
 
 def ndcg_by_user(df: pl.DataFrame, score_col: str, k: int = 10) -> FloatArray:
     """Per-user NDCG@k of candidates ordered by `score_col`, relative to all relevant items."""
-    ranked = df.sort(["user_id", score_col], descending=[False, True])
+    ranked = df.sort(
+        ["user_id", score_col, "retrieval_rank"],
+        descending=[False, True, False],
+        maintain_order=True,
+    )
     per_user = ranked.group_by("user_id", maintain_order=True).agg(
         labels=pl.col("label").head(k), n_rel=pl.col("n_relevant").first()
     )
@@ -151,7 +155,7 @@ def plot_shap(importance: dict[str, float], path: Path, top: int = 15) -> None:
     items = list(importance.items())[:top][::-1]
     fig, ax = plt.subplots(figsize=(7, 0.35 * len(items) + 1.2))
     ax.barh([k for k, _ in items], [v for _, v in items], color="#4c72b0")
-    ax.set_xlabel("mean |SHAP value| (log-odds of relevance)")
+    ax.set_xlabel("mean |SHAP value| (ranker score units)")
     ax.set_title("Ranker feature importance")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
@@ -164,13 +168,13 @@ def run(
     out_dir: Path,
     cfg: RankerConfig,
     *,
-    early_stop_users: npt.NDArray[np.int64] | None = None,
     n_resamples: int = 1000,
     doc_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Tune, train, and evaluate the ranker; write the model and a summary to `out_dir`."""
     df = pl.read_parquet(features_path).sort(["user_id", "retrieval_rank"])
-    excluded = early_stop_users if early_stop_users is not None else np.zeros(0, dtype=np.int64)
+    # Users whose labels early-stopped the retrieval model, carried from its artifacts.
+    excluded = np.load(features_path.parent / "early_stop_users.npy")
     users = df["user_id"].to_numpy()
     train_users, eval_users = split_users(users, excluded, cfg.eval_share, cfg.seed)
     fit_users, inner_users = split_users(
@@ -242,32 +246,19 @@ def main(argv: list[str] | None = None) -> None:
         default=settings.artifacts_dir / "ranker_features" / "ranker_features_val.parquet",
     )
     p.add_argument("--out-dir", type=Path, default=settings.artifacts_dir / "ranker")
-    p.add_argument(
-        "--early-stop-split",
-        type=Path,
-        default=None,
-        help="exclude this split's validation users (retrieval early stopping)",
-    )
     p.add_argument("--doc-dir", type=Path, default=Path("docs"))
     p.add_argument("--n-trials", type=int, default=RankerConfig.n_trials)
     p.add_argument("--timeout-minutes", type=float, default=RankerConfig.timeout_minutes)
     p.add_argument("--experiment", default="ranker")
     args = p.parse_args(argv)
     configure_logging(settings.log_level)
-    excluded = None
-    if args.early_stop_split is not None:
-        excluded = (
-            pl.read_parquet(args.early_stop_split / "val.parquet")["user_id"].unique().to_numpy()
-        )
     cfg = RankerConfig(
         n_trials=args.n_trials, timeout_minutes=args.timeout_minutes, seed=settings.seed
     )
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(args.experiment)
     with mlflow.start_run(run_name="lambdamart"):
-        summary = run(
-            args.features, args.out_dir, cfg, early_stop_users=excluded, doc_dir=args.doc_dir
-        )
+        summary = run(args.features, args.out_dir, cfg, doc_dir=args.doc_dir)
     log.info("done", extra={"lift": summary["ndcg@10_lift"]})
 
 

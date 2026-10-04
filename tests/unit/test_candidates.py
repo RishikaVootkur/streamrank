@@ -73,3 +73,7 @@ def test_export_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
         .is_empty()
     )
     assert verify_outputs(tmp_path / "cand")["stage"] == "candidates"
+    np.testing.assert_array_equal(
+        np.load(tmp_path / "cand" / "early_stop_users.npy"),
+        np.load(model_dir / "early_stop_users.npy"),
+    )

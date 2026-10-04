@@ -96,4 +96,4 @@ train-ranker: ## Export candidates, build ranker features, and train the LambdaM
 	$(UV) run python -m streamrank.models.candidates --model-dir $(RETRIEVAL_MODEL)
 	$(UV) run python -m streamrank.ranking.build_features
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.ranking.train_ranker \
-		--early-stop-split data/split/sample10 $(RANKER_ARGS)
+		$(RANKER_ARGS)

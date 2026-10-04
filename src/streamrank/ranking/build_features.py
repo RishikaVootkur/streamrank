@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 from streamrank.common.config import get_settings
@@ -51,6 +52,8 @@ def run(candidates_dir: Path, split_dir: Path, out_dir: Path, partition: str = "
     begin_stage(out_dir)
     path = out_dir / f"ranker_features_{partition}.parquet"
     write_parquet_atomic(table, path)
+    early_path = out_dir / "early_stop_users.npy"
+    np.save(early_path, np.load(candidates_dir / "early_stop_users.npy"))
     write_manifest(
         out_dir,
         stage="ranker_features",
@@ -62,7 +65,7 @@ def run(candidates_dir: Path, split_dir: Path, out_dir: Path, partition: str = "
         },
         data_hash=str(cand_manifest["data_hash"]),
         seed=cand_manifest["seed"],
-        outputs=[path],
+        outputs=[path, early_path],
     )
     return path
 

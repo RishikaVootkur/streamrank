@@ -63,6 +63,12 @@ spark = [
 features = [
     "feast[duckdb,redis]>=0.66.0",
 ]
+monitor = [
+    "evidently>=0.7.23",
+]
+demo = [
+    "streamlit>=1.65.0",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
@@ -113,5 +119,5 @@ show_missing = true
 skip_covered = true
 
 [[tool.mypy.overrides]]
-module = ["implicit.*", "onnxruntime.*", "onnxmltools.*", "confluent_kafka.*"]
+module = ["implicit.*", "onnxruntime.*", "onnxmltools.*", "confluent_kafka.*", "evidently.*"]
 ignore_missing_imports = true

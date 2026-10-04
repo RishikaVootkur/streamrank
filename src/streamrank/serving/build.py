@@ -39,6 +39,7 @@ def item_arrays(item_ids: np.ndarray, movies: pl.DataFrame) -> dict[str, np.ndar
                 genres[row, index[g]] = 1.0
     return {
         "item_ids": item_ids.astype(np.int64),
+        "has_movie": m["title"].is_not_null().to_numpy(),
         "year": m["year"].cast(pl.Float64).fill_null(np.nan).to_numpy(),
         "genres": genres,
         "titles": np.asarray(m["title"].fill_null("").to_list(), dtype=object),

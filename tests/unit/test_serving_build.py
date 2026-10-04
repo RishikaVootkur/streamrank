@@ -14,9 +14,10 @@ def test_item_and_profile_arrays() -> None:
             "genres": [["Drama"], ["Comedy", "Unknown"], []],
         }
     )
-    items = item_arrays(np.array([3, 1, 2]), movies)
-    assert items["item_ids"].tolist() == [3, 1, 2]
-    assert items["titles"].tolist() == ["C (2010)", "A (1990)", "B"]
+    items = item_arrays(np.array([3, 1, 2, 99]), movies)
+    assert items["has_movie"].tolist() == [True, True, True, False]
+    assert items["item_ids"].tolist() == [3, 1, 2, 99]
+    assert items["titles"].tolist() == ["C (2010)", "A (1990)", "B", ""]
     assert np.isnan(items["year"][2]) and items["year"][1] == 1990
     assert items["genres"][1, GENRES.index("Drama")] == 1.0
     assert items["genres"][2].sum() == 1  # unknown genre ignored

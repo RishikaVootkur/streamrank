@@ -101,13 +101,19 @@ class Batch:
 
 
 def training_batch(
-    seqs: Sequences, users: IntArray, max_len: int, rng: np.random.Generator
+    seqs: Sequences,
+    users: IntArray,
+    max_len: int,
+    rng: np.random.Generator,
+    recent_prob: float = 0.0,
 ) -> Batch:
     """One random window of up to `max_len + 1` events per user.
 
     The window end is drawn uniformly from the positions that allow a full window (or the
     sequence end for short users), so long histories are covered across epochs. Users with
-    fewer than two events get an all-padding row.
+    fewer than two events get an all-padding row. With probability `recent_prob` the window
+    ends at the user's latest event instead, which emphasizes recent behavior (the
+    evaluation predicts what comes after the training cutoff).
     """
     b = users.size
     inputs = np.zeros((b, max_len), dtype=np.int64)
@@ -121,7 +127,7 @@ def training_batch(
         if n < 2:  # noqa: PLR2004 - need one input and one target
             continue
         lo = min(n, max_len + 1)
-        stop = int(rng.integers(lo, n + 1))
+        stop = n if rng.random() < recent_prob else int(rng.integers(lo, n + 1))
         start = max(0, stop - max_len - 1)
         base = int(seqs.indptr[user])
         window = slice(base + start, base + stop)

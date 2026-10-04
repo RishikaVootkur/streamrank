@@ -128,3 +128,18 @@ def test_same_second_ties_are_not_ordered_by_item() -> None:
     assert tokens != sorted(tokens)
     # Deterministic across builds.
     assert build_sequences(build_train(history, cutoff_ts=100)).tokens.tolist() == tokens
+
+
+def test_recent_windows_end_at_the_latest_event() -> None:
+    n = 30
+    history = pl.DataFrame(
+        {"user_id": [1] * n, "item_id": list(range(n)), "rating": [5.0] * n, "ts": list(range(n))}
+    )
+    seqs = build_sequences(build_train(history, cutoff_ts=100))
+    rng = np.random.default_rng(0)
+    latest = seqs.tokens[-1]
+    always = [training_batch(seqs, np.array([0]), 5, rng, recent_prob=1.0) for _ in range(20)]
+    assert all(b.targets[0, -1] == latest for b in always)
+    mixed = [training_batch(seqs, np.array([0]), 5, rng, recent_prob=0.5) for _ in range(200)]
+    share = np.mean([b.targets[0, -1] == latest for b in mixed])
+    assert 0.35 < share < 0.65

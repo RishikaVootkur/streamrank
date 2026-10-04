@@ -63,6 +63,7 @@ class TrainConfig:
     warmup_steps: int = 200
     grad_clip: float = 1.0
     patience: int = 2
+    recent_window_prob: float = 0.0  # share of training windows ending at the latest event
     time_limit_minutes: float = 85.0
     seed: int = 42
 
@@ -179,7 +180,13 @@ class TwoTowerRecommender:
         self.model.train()
         losses = []
         for batch_users in np.array_split(rng.permutation(users), n_batches):
-            batch = training_batch(self._seqs, batch_users, self.model_cfg.max_len, rng)
+            batch = training_batch(
+                self._seqs,
+                batch_users,
+                self.model_cfg.max_len,
+                rng,
+                recent_prob=self.train_cfg.recent_window_prob,
+            )
             if not batch.target_mask.any():
                 continue
             loss = self.model.loss(to_device(batch, self.device), generator=gen)

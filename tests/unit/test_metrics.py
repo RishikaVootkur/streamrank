@@ -100,6 +100,31 @@ def test_paired_difference_detects_real_gap() -> None:
         m.paired_difference(base, base[:10])
 
 
+def test_duplicate_and_out_of_range_items_rejected() -> None:
+    rel = _rel([[0], [0]], 5)
+    with pytest.raises(ValueError, match="repeats"):
+        m.hit_matrix(np.array([[0, 0, 1], [1, 2, 3]]), rel)
+    with pytest.raises(ValueError, match="out of range"):
+        m.hit_matrix(np.array([[5], [0]]), rel)
+    with pytest.raises(ValueError, match="out of range"):
+        m.hit_matrix(np.array([[-2], [0]]), rel)
+    m.hit_matrix(np.array([[1, -1, -1], [2, 3, -1]]), rel)  # repeated padding is fine
+
+
+def test_check_excluded() -> None:
+    exclude = _rel([[1], []], 5)
+    m.check_excluded(np.array([[0, 2], [1, 3]]), exclude)
+    with pytest.raises(ValueError, match="already interacted"):
+        m.check_excluded(np.array([[1, 2], [0, 3]]), exclude)
+    with pytest.raises(ValueError, match="same number"):
+        m.check_excluded(np.array([[1, 2]]), exclude)
+
+
+def test_users_without_recommendations_rejected_for_popularity() -> None:
+    with pytest.raises(ValueError, match="no recommendations"):
+        m.average_popularity(np.array([[-1, -1]]), np.array([0.5]), 2)
+
+
 def test_per_user_metrics_and_summary() -> None:
     n_items = 300
     recs = np.tile(np.arange(200), (2, 1))
@@ -112,3 +137,7 @@ def test_per_user_metrics_and_summary() -> None:
     assert summary["mrr"].mean == pytest.approx(0.5)
     with pytest.raises(ValueError, match="at least 200"):
         m.per_user_metrics(recs[:, :100], rel)
+    with pytest.raises(ValueError, match="at least 10"):
+        m.per_user_metrics(recs[:, :5], rel, ks=(5,))
+    with pytest.raises(ValueError, match="relevant item"):
+        m.per_user_metrics(recs, _rel([[0], []], n_items))

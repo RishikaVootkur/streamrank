@@ -34,11 +34,30 @@ def hit_matrix(recs: IntArray, relevant: sp.csr_array) -> BoolArray:
     if relevant.shape[0] != n_users:
         raise ValueError("recs and relevant must have the same number of users")
     n_items = relevant.shape[1]
+    validate_recs(recs, n_items)
     coo = relevant.tocoo()
     rel_keys = np.sort(coo.row.astype(np.int64) * n_items + coo.col.astype(np.int64))
     rec_keys = np.arange(n_users, dtype=np.int64)[:, None] * n_items + recs
     hits: BoolArray = np.isin(rec_keys, rel_keys) & (recs >= 0)
     return hits
+
+
+def validate_recs(recs: IntArray, n_items: int) -> None:
+    """Reject lists with out-of-range items or an item repeated within one user's list."""
+    if recs.size and (recs.max() >= n_items or recs.min() < -1):
+        raise ValueError("recommended item index out of range")
+    ordered = np.sort(recs, axis=1)
+    repeated = (np.diff(ordered, axis=1) == 0) & (ordered[:, 1:] >= 0)
+    if repeated.any():
+        raise ValueError("a user's list repeats an item")
+
+
+def check_excluded(recs: IntArray, exclude: sp.csr_array) -> None:
+    """Raise if any recommended item is one the user already interacted with."""
+    if exclude.shape[0] != recs.shape[0]:
+        raise ValueError("recs and exclude must have the same number of users")
+    if exclude.nnz and hit_matrix(recs, exclude).any():
+        raise ValueError("recommendations include items the user already interacted with")
 
 
 def recall_at_k(hits: BoolArray, n_relevant: IntArray, k: int) -> FloatArray:
@@ -76,6 +95,8 @@ def catalog_coverage(recs: IntArray, n_items: int, k: int) -> float:
 def average_popularity(recs: IntArray, item_popularity: FloatArray, k: int) -> FloatArray:
     """Per-user mean popularity (share of training interactions) of the top-K items."""
     top = recs[:, :k]
+    if (top < 0).all(axis=1).any():
+        raise ValueError("a user has no recommendations")
     pop = np.where(top >= 0, item_popularity[np.clip(top, 0, None)], np.nan)
     out: FloatArray = np.nanmean(pop, axis=1)
     return out
@@ -148,11 +169,18 @@ RECALL_KS: tuple[int, ...] = (10, 50, 100, 200)
 def per_user_metrics(
     recs: IntArray, relevant: sp.csr_array, ks: tuple[int, ...] = RECALL_KS
 ) -> dict[str, FloatArray]:
-    """Compute every per-user metric for a batch of top-K lists."""
-    if recs.shape[1] < max(ks):
-        raise ValueError(f"need at least {max(ks)} recommendations per user")
-    hits = hit_matrix(recs, relevant)
+    """Compute every per-user metric for a batch of top-K lists.
+
+    Every user must have at least one relevant item; users without any are not part of
+    the evaluation population and would bias the means toward zero.
+    """
+    needed = max(*ks, 10)
+    if recs.shape[1] < needed:
+        raise ValueError(f"need at least {needed} recommendations per user")
     n_rel = np.diff(relevant.indptr).astype(np.int64)
+    if (n_rel == 0).any():
+        raise ValueError("every evaluated user needs at least one relevant item")
+    hits = hit_matrix(recs, relevant)
     out = {f"recall@{k}": recall_at_k(hits, n_rel, k) for k in ks}
     out["ndcg@10"] = ndcg_at_k(hits, n_rel, 10)
     out["mrr"] = mrr(hits)

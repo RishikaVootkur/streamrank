@@ -97,6 +97,7 @@ train-ranker: ## Export candidates, build ranker features, and train the LambdaM
 	$(UV) run python -m streamrank.ranking.build_features
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.ranking.train_ranker \
 		$(RANKER_ARGS)
+	$(UV) run python -m streamrank.ranking.export_onnx
 
 export-onnx: ## Export the trained user tower to ONNX and check parity with PyTorch
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.serving.export_onnx \

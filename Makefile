@@ -5,7 +5,8 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate
+
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -134,3 +135,8 @@ stream: ## Run the streaming session-feature job (Redpanda -> Redis)
 stream-parity: ## Replay 10,000 events and check online session features against batch
 	$(COMPOSE) --profile streaming up -d --wait redis redpanda
 	$(UV) run python -m streamrank.streaming.parity --events 10000
+
+simulate: ## Replay future events and interleave rankers (retrieval vs ranker, plus a sanity pair)
+	$(UV) run python -m streamrank.simulation.simulate --pair retrieval,ranker
+	$(UV) run python -m streamrank.simulation.simulate --pair retrieval,ranker --daily-features
+	$(UV) run python -m streamrank.simulation.simulate --pair popular,retrieval

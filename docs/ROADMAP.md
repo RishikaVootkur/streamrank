@@ -13,7 +13,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M6 LightGBM LambdaMART ranker
 - [x] M7 Serving API
 - [x] M8 Streaming session features
-- [ ] M9 Online test simulation
+- [x] M9 Online test simulation
 - [ ] M10 Observability, demo UI, Kubernetes
 - [ ] M11 Final run, docs, release
 
@@ -76,6 +76,18 @@ On 2,908 held-out validation users (their validation labels were never used to t
 ### Serving API (M7)
 
 FastAPI with the ONNX user tower, HNSW retrieval, Feast online features, the ONNX ranker, and a popularity fallback. k6 against the container (2 CPUs, one worker): **p99 6.8 ms at 250 requests per second** with no errors (p99 97 ms at 300). Server-side median 4.8 ms. `make smoke` passes. See [load-test.md](load-test.md) and [ADR 0009](adr/0009-serving-architecture.md).
+
+### Online test simulation (M9)
+
+Team-draft interleaving over replayed validation events, 2,000 held-out users, 23,197 impressions per run; preference for B is averaged over users with a 95% bootstrap interval ([ADR 0011](adr/0011-online-test-simulation.md)):
+
+| A | B | Preference for B [95% CI] | Winner |
+| --- | --- | ---: | --- |
+| Retrieval order | Retrieval + ranker (features frozen at cutoff) | +0.018 [-0.030, +0.065] | tie |
+| Retrieval order | Retrieval + ranker (features refreshed daily) | -0.027 [-0.072, +0.020] | tie |
+| Recent popularity | Retrieval order | **+0.371 [+0.324, +0.420]** | retrieval |
+
+The ranker's offline NDCG lift does not carry over to next-event replay; the sanity pair shows the test can detect a real difference.
 
 ## Blocked or changed
 

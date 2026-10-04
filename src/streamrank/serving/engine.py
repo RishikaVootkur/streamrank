@@ -162,6 +162,36 @@ class Engine:
             source=source,
         )
 
+    def variants(self, user_id: int, k: int = 10) -> dict[str, list[int]] | None:
+        """Top-k item IDs for three systems from one retrieval pass: recent popularity
+        (unseen), retrieval order, and ranker order.
+
+        None for unknown users (both variants would be the same fallback list).
+        """
+        state = read(self.client, user_id)
+        if not state.known:
+            return None
+        user_vec = self.art.user_tower.run(None, left_pad(state, self.art.max_len))[0]
+        rows, scores = retrieve(self.art.index, self.art.item_vectors, user_vec, state.seen)
+        if rows.size == 0:
+            return None
+        feats = request_features(
+            rows,
+            scores,
+            self.user_features(user_id),
+            self._profile(user_id),
+            items=self.items,
+            now_ts=self.now_ts,
+        )
+        ranked = np.asarray(self.art.ranker.run(None, {"features": feats})[0]).ravel()
+        order = np.argsort(-ranked, kind="stable")[:k]
+        popular = self.art.fallback[~np.isin(self.art.fallback, state.seen)][:k]
+        return {
+            "popular": [int(x) for x in self.art.item_ids[popular]],
+            "retrieval": [int(x) for x in self.art.item_ids[rows[:k]]],
+            "ranker": [int(x) for x in self.art.item_ids[rows[order]]],
+        }
+
     def recommend(self, user_id: int, k: int = 10) -> Recommendation:
         """Top-k items for a user."""
         t0 = time.perf_counter()

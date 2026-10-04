@@ -136,7 +136,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The engine holds the GIL for most of a request, so extra threads add no throughput.
     # Under overload, the default 40 threads contend for the GIL and each request costs
     # several times more CPU; a small cap keeps the backlog in the event loop instead.
-    app.state.limiter = anyio.CapacityLimiter(int(os.environ.get("ENGINE_THREADS", "2")))
+    app.state.limiter = anyio.CapacityLimiter(int(os.environ.get("ENGINE_THREADS", "8")))
     app.state.ready = True
     log.info(
         "ready",

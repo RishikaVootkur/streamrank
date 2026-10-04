@@ -91,7 +91,7 @@ The ranker's offline NDCG lift does not carry over to next-event replay; the san
 
 ### Kubernetes (M10)
 
-Helm chart on a one-node kind cluster: API Deployment, Redis started from a snapshot of the serving state, and a CPU HPA (60% of a 500m request, 1 to 4 replicas). Under k6 at 150 requests per second from one replica, the HPA scaled 1 to 4 within 45 s of saturation and settled at 3; 36,020 requests, no errors or restarts, median 6.1 ms (p99 2.5 s from the minute before scale-out). Steady state at 4 replicas: p99 16.5 ms. Load testing led to a cap on concurrent engine work in the API. See [ADR 0012](adr/0012-kubernetes-deployment.md).
+Helm chart on a one-node kind cluster: API Deployment, Redis started from a snapshot of the serving state, and a CPU HPA (60% of a 500m request, 1 to 4 replicas). Under k6 at 150 requests per second from one replica, the HPA scaled 1 to 4 within 45 s of saturation and settled at 3; no errors or restarts, median 6.1 ms, p99 2.5 s and 721 dropped requests from the minute before scale-out. Steady state at 4 replicas with kept-alive connections: p99 16.5 ms. Load testing led to a cap on concurrent engine work in the API. See [ADR 0012](adr/0012-kubernetes-deployment.md).
 
 ## Blocked or changed
 

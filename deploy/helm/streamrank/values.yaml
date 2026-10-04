@@ -1,6 +1,6 @@
 api:
   image: streamrank-api:local
-  pullPolicy: Never  # images are loaded into kind with `kind load docker-image`
+  pullPolicy: Never  # images are loaded into kind with `kind load image-archive`
   replicas: 1
   # Requests the API works on at once; the rest wait in the event loop (see app.py).
   engineThreads: 8

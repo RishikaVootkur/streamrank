@@ -26,6 +26,12 @@ spec:
         - name: api
           image: {{ .Values.api.image }}
           imagePullPolicy: {{ .Values.api.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           env:
             - name: REDIS_HOST
               value: {{ .Release.Name }}-redis

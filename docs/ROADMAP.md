@@ -8,7 +8,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M1 Data ingest, validation, temporal split, synthetic generator
 - [x] M2 Evaluation library and baselines
 - [x] M3 PySpark offline features and Feast
-- [ ] M4 Two-tower retrieval with sequential user tower
+- [x] M4 Two-tower retrieval with sequential user tower
 - [ ] M5 FAISS index
 - [ ] M6 LightGBM LambdaMART ranker
 - [ ] M7 Serving API
@@ -53,6 +53,19 @@ Full split, validation partition: 6,463 warm users ranked against all 65,723 cat
 
 10,000 replayed MovieLens events after the training cutoff (631 users): online session features in Redis equal the offline batch computation for every user (0 mismatches). Click-to-Redis latency p50 529 ms, p95 540 ms. See [ADR 0010](adr/0010-streaming-session-features.md).
 
+### Two-tower retrieval (M4)
+
+Validation users outside the 10% sample (5,816 users), full catalog, mean with 95% bootstrap interval; difference is paired against EASE on the same users. Trained on MPS, logged to MLflow. Details in [ADR 0006](adr/0006-two-tower-retrieval.md) and [segment analysis](two-tower-segments.md).
+
+| Model | Recall@100 | Recall@200 | NDCG@10 |
+| --- | ---: | ---: | ---: |
+| Two-tower (sequential user tower) | 0.2562 [0.2494, 0.2628] | 0.3604 | 0.1161 |
+| EASE (best baseline) | 0.2865 | 0.3907 | 0.1478 |
+| Difference | -0.0303 [-0.0368, -0.0235] | | |
+
+Ablations (10% sample, Recall@100): full 0.2306; no sequence encoder 0.1913; no content features 0.1834; no log-Q 0.1792; uniform training windows 0.1896.
+
 ## Blocked or changed
 
+- M4: the two-tower retrieval model does not beat EASE beyond the interval (Recall@100 -0.030 [-0.037, -0.023]). Tried: recent-biased training windows (+0.025 on the sample), temperature and dropout tuning, inclusion-probability log-Q. The gap is analyzed in ADR 0006: it ties EASE for very short and very long histories and loses most for moderate histories and recently active users. The two-tower model stays as the retrieval stage because EASE cannot be served from a nearest-neighbor index or embed new items, and the ranker stage recovers ranking quality.
 - SHAP importance for the ranker uses LightGBM's built-in TreeSHAP (`pred_contrib=True`). The `shap` package currently resolves to an old `llvmlite` that fails to build with NumPy 2.5.

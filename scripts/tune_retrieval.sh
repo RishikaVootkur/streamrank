@@ -25,3 +25,9 @@ run recent_0.5_dropout_0.3 --recent-window-prob 0.5 --dropout 0.3
 run recent_0.5_dim_64 --recent-window-prob 0.5 --dim 64
 run recent_0.5_temp_0.2 --recent-window-prob 0.5 --temperature 0.2
 run recent_0.5_temp_0.1_dropout_0.3 --recent-window-prob 0.5 --temperature 0.1 --dropout 0.3
+
+# Ablations of the chosen configuration (one component removed at a time).
+BEST=(--recent-window-prob 0.5 --temperature 0.1 --dropout 0.3)
+run abl_no_sequence "${BEST[@]}" --use-sequence false
+run abl_no_content "${BEST[@]}" --use-content false
+run abl_no_logq "${BEST[@]}" --use-logq false

@@ -41,13 +41,14 @@ The same change helps the Compose container (2 CPUs) at 250 requests per second.
 
 k6 inside the kind network, 150 requests per second for 4 minutes, starting from one replica, a new connection per request (`NO_REUSE=1`; kept-alive connections stay on the pods that existed when they opened, so new replicas get no traffic):
 
-- The HPA went from 1 to 2 to 4 replicas within 45 s of the pod saturating, the backlog cleared about a minute later, and it settled at 3 replicas at about 54% of the CPU request.
-- k6 sent 35,280 of the 36,000 planned load-phase requests: it dropped 721 while all 300 of its virtual users waited on the saturated pod, so the offered rate was not fully delivered then. No errors, no pod restarts; median 6.1 ms. p99 is 2.5 s, all from the first minute when one pod (about 130 requests per second at its 1 CPU limit) carried the whole load. The run fails the script's own thresholds (p99 under 50 ms, no dropped requests), as a step load beyond one pod's capacity must before scale-out.
+- The HPA went from 1 to 2 to 3 replicas within 30 s of the pod saturating and to 4 about a minute later, then held at about 49% of the CPU request.
+- k6 sent 35,757 of the 36,000 planned load-phase requests: it dropped 243 while all 300 of its virtual users waited on the saturated pod, so the offered rate was not fully delivered then. No errors, no pod restarts; median 6.5 ms. p99 is 1.9 s, all from the first minute and a half, when one pod (about 130 requests per second at its 1 CPU limit) and then too few pods carried the load. The run fails the script's own thresholds (p99 under 50 ms, no dropped requests), as a step load beyond one pod's capacity must before scale-out.
+- An earlier run of the same test settled at 3 replicas, with 721 dropped and p99 2.5 s; when the third and fourth replicas arrive varies between runs.
 - Steady state with 4 replicas at 150 requests per second (two separate 2-minute runs): with kept-alive connections p50 5.7 ms, p99 16.5 ms, 34 of 18,000 requests dropped; with a new connection per request p99 191 ms and 23 dropped, the extra tail coming from connection setup through the NodePort.
 
 ## Consequences
 
 - One `values.yaml` holds the deployment's tuning; the same image runs in Compose and on Kubernetes.
 - hostPath volumes and a Redis snapshot tie the chart to a one-node local cluster. A shared cluster would need a registry, object storage or a PersistentVolume for artifacts, and a Redis loader Job.
-- The HPA reacts within about 45 s of saturation and the backlog takes another minute to clear, so a step load beyond one pod's capacity sees a latency spike before replicas catch up. With `minReplicas: 2`, a step up to about 260 requests per second (two pods at their limit) should not saturate before scale-out.
+- The HPA reacts within about 30 to 45 s of saturation and the backlog takes another minute to clear, so a step load beyond one pod's capacity sees a latency spike before replicas catch up. With `minReplicas: 2`, a step up to about 260 requests per second (two pods at their limit) should not saturate before scale-out.
 - Docker Desktop's 8 GB is tight: the Compose stack has to be stopped while the cluster runs, or memory pressure pushes per-request time from 8 ms to 40 ms.

@@ -88,7 +88,8 @@ def test_leakage_check_catches_duplicated_interaction(split: Split) -> None:
         t1=split.t1,
         t2=split.t2,
     )
-    check_no_leakage(leaked)  # different timestamp: a re-rating, not a duplicate
+    with pytest.raises(LeakageError, match="more than once"):
+        check_no_leakage(leaked)  # the same pair copied into test with a new timestamp
     dup = Split(
         train=split.train,
         val=pl.concat([split.val, row]),
@@ -96,7 +97,7 @@ def test_leakage_check_catches_duplicated_interaction(split: Split) -> None:
         t1=split.t1,
         t2=split.t2,
     )
-    with pytest.raises(LeakageError, match="more than one"):
+    with pytest.raises(LeakageError, match="more than once"):
         check_no_leakage(dup)
 
 
@@ -120,6 +121,16 @@ def test_sample_is_deterministic_and_user_level(split: Split) -> None:
     expected = sample_users(pl.DataFrame({"user_id": all_val}), 10, 42)["user_id"]
     assert set(val_users.to_list()) == set(expected.to_list())
     assert sample_users(split.train, 100, 42).height == split.train.height
+
+
+def test_different_seeds_give_different_samples() -> None:
+    users = pl.DataFrame({"user_id": pl.arange(1, 20_001, eager=True)})
+    picks = {s: set(sample_users(users, 10, s)["user_id"].to_list()) for s in (42, 43, 142)}
+    for s, chosen in picks.items():
+        assert 0.09 < len(chosen) / users.height < 0.11, s
+    for a, b in ((42, 43), (42, 142)):
+        overlap = len(picks[a] & picks[b]) / len(picks[a])
+        assert overlap < 0.2, (a, b, overlap)  # independent samples overlap about 10%
 
 
 @pytest.mark.parametrize(
@@ -154,6 +165,8 @@ def test_cli_end_to_end(tmp_path: Path) -> None:
             str(tmp_path / "split"),
             "--stats-doc",
             str(doc),
+            "--source",
+            "synthetic data",
         ]
     )
     for sub in ("full", "sample10"):
@@ -166,6 +179,8 @@ def test_cli_end_to_end(tmp_path: Path) -> None:
     text = doc.read_text()
     assert "| train |" in text
     assert "Users with train history" in text
+    assert "synthetic data" in text
+    assert read_manifest(tmp_path / "processed")["data_hash"] in text
 
 
 def test_split_refuses_unverified_input(tmp_path: Path) -> None:

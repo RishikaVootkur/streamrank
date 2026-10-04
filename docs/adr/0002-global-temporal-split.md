@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Offline results must predict how the recommender would do when deployed: trained on the past and asked about the future. MovieLens 32M has 32,000,204 ratings from 1995-01-09 to 2023-10-12. Rating volume per year varies widely (about 0.5M in 2014, 1.9M in 2016, 0.8M in 2023).
+Offline results must predict how the recommender would do when deployed: trained on the past and asked about the future. MovieLens 32M has 32,000,204 ratings from 1995-01-09 to 2023-10-13 (UTC). Rating volume per year varies widely (about 0.5M in 2014, 1.9M in 2016, 0.8M in 2023).
 
 ## Options considered
 
@@ -31,7 +31,7 @@ Option 4. T2 is the timestamp quantile that leaves the last 5% of interactions a
 
 ## Consequences
 
-- Fewer evaluable users than leave-one-out (6,742 warm validation users on full data, 700 in the 10% sample), so confidence intervals are wider and are always reported.
+- Fewer evaluable users than leave-one-out (6,742 warm validation users on full data, 673 in the 10% sample), so confidence intervals are wider and are always reported.
 - The split matches deployment: no model sees the future.
 
 ## Sources

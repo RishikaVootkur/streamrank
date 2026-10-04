@@ -17,7 +17,7 @@ Short facts a contributor needs to work on this repo. Keep under 120 lines.
 
 ## Ports
 API 8000, MLflow 5001, Grafana 3000, Prometheus 9090, Redis 6379,
-Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
+Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432, kind API 18000.
 
 ## Data pipeline
 - `make data` downloads and MD5-verifies MovieLens 32M into `data/` (gitignored).
@@ -83,3 +83,9 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - `make up` also starts the Streamlit demo at http://localhost:8501 (user history from Redis,
   recommendations from the API, "Like" appends an event to the user's serving state).
 - Likes persist in Redis until `make serving-artifacts` reloads the serving state.
+
+## Kubernetes
+- `make kind-up` (cluster, Redis snapshot, images, metrics-server), `make helm-install`,
+  `make kind-load` (k6 at `LOAD_RATE`, logs HPA replicas), `make kind-down`. API at port 18000.
+- Stop the Compose stack first (`make down`): with both running, Docker's 8 GB swaps.
+- `kind load docker-image` fails with Docker's containerd image store; load image archives.

@@ -240,16 +240,38 @@ def _optimizer(
     return opt, sched
 
 
-def subset_targets(targets: EvalTargets, keep_users: IntArray, train: TrainData) -> EvalTargets:
-    """Restrict targets to the users whose IDs are in `keep_users`."""
-    ids = train.user_ids[targets.user_rows]
-    mask = np.isin(ids, keep_users)
-    return EvalTargets(
-        user_rows=targets.user_rows[mask],
-        relevant=sp.csr_array(targets.relevant[mask]),
-        exclude=sp.csr_array(targets.exclude[mask]),
-        n_cold_users=targets.n_cold_users,
-    )
+def split_targets(
+    targets: EvalTargets, user_ids: IntArray, train: TrainData
+) -> tuple[EvalTargets, EvalTargets]:
+    """Split targets into the users whose IDs are in `user_ids` and everyone else."""
+    mask = np.isin(train.user_ids[targets.user_rows], user_ids)
+
+    def pick(m: npt.NDArray[np.bool_]) -> EvalTargets:
+        return EvalTargets(
+            user_rows=targets.user_rows[m],
+            relevant=sp.csr_array(targets.relevant[m]),
+            exclude=sp.csr_array(targets.exclude[m]),
+            n_cold_users=targets.n_cold_users,
+        )
+
+    return pick(mask), pick(~mask)
+
+
+def early_stop_users(setup: EvalSetup, early_stop_split: Path | None, seed: int) -> IntArray:
+    """User IDs used for early stopping; metrics are also reported on everyone else.
+
+    With `early_stop_split`, its validation users (for the full split, the 10% sample whose
+    validation users also tuned the baselines). Otherwise a seeded half of the users.
+    """
+    if early_stop_split is not None:
+        ids: IntArray = (
+            pl.read_parquet(early_stop_split / "val.parquet")["user_id"].unique().to_numpy()
+        )
+        return ids
+    users = setup.train.user_ids[setup.targets.user_rows]
+    rng = np.random.default_rng(seed)
+    out: IntArray = np.sort(rng.choice(users, size=users.size // 2, replace=False))
+    return out
 
 
 def run(
@@ -269,10 +291,9 @@ def run(
     processed = settings.data_dir / "processed"
     movies = pl.read_parquet(processed / "movies.parquet")
     tags = pl.read_parquet(processed / "tags.parquet")
-    es_targets = setup.targets
-    if early_stop_split is not None:
-        keep = pl.read_parquet(early_stop_split / "val.parquet")["user_id"].unique().to_numpy()
-        es_targets = subset_targets(setup.targets, keep, setup.train)
+    es_ids = early_stop_users(setup, early_stop_split, train_cfg.seed)
+    es_targets, heldout_targets = split_targets(setup.targets, es_ids, setup.train)
+    heldout = EvalSetup(train=setup.train, targets=heldout_targets, partition="val")
     begin_stage(out_dir)
     rec = TwoTowerRecommender(model_cfg, train_cfg, movies, tags, early_stop_targets=es_targets)
 
@@ -290,17 +311,34 @@ def run(
         fit_seconds=fit_s,
         recommend_seconds=time.perf_counter() - t0 - fit_s,
     )
-    summary: dict[str, Any] = {"run_name": run_name, "result": result.row(), "history": rec.history}
+    keep = np.isin(setup.targets.user_rows, heldout_targets.user_rows)
+    held_result = evaluate_lists(
+        rec.name,
+        result.params,
+        recs[keep],
+        heldout,
+        n_resamples=n_resamples,
+        seed=train_cfg.seed,
+    )
+    summary: dict[str, Any] = {
+        "run_name": run_name,
+        "n_early_stop_users": int(es_targets.user_rows.size),
+        "result": result.row(),
+        "heldout": held_result.row(),
+        "history": rec.history,
+    }
     if compare_ease:
-        ease = _ease_result(setup, n_resamples, train_cfg.seed)
-        diff = metrics.paired_difference(
-            result.per_user["recall@100"],
-            ease.per_user["recall@100"],
-            n_resamples=n_resamples,
-            seed=train_cfg.seed,
-        )
-        summary["ease"] = ease.row()
-        summary["recall@100_minus_ease"] = asdict(diff)
+        ease_all, ease_held = _ease_results(setup, heldout, keep, n_resamples, train_cfg.seed)
+        summary["ease"] = ease_all.row()
+        summary["ease_heldout"] = ease_held.row()
+        for label, ours, theirs in (("", result, ease_all), ("_heldout", held_result, ease_held)):
+            diff = metrics.paired_difference(
+                ours.per_user["recall@100"],
+                theirs.per_user["recall@100"],
+                n_resamples=n_resamples,
+                seed=train_cfg.seed,
+            )
+            summary[f"recall@100_minus_ease{label}"] = asdict(diff)
     _save(out_dir, rec, summary, split_dir)
     if mlflow.active_run() is not None:
         mlflow.log_params({k: v for k, v in summary["result"]["params"].items()})
@@ -309,11 +347,23 @@ def run(
     return summary
 
 
-def _ease_result(setup: EvalSetup, n_resamples: int, seed: int) -> EvalResult:
-    from streamrank.eval.evaluate import fit_and_evaluate  # noqa: PLC0415
-
+def _ease_results(
+    setup: EvalSetup, heldout: EvalSetup, keep: npt.NDArray[np.bool_], n_resamples: int, seed: int
+) -> tuple[EvalResult, EvalResult]:
+    """EASE (tuned setting) on all users and on the held-out users, from one fit."""
     params = {"l2": 2000.0, "signal": "positive"}
-    return fit_and_evaluate(EASE(l2=2000.0, signal="positive"), setup, params, n_resamples, seed)
+    model = EASE(l2=2000.0, signal="positive")
+    t0 = time.perf_counter()
+    model.fit(setup.train)
+    fit_s = time.perf_counter() - t0
+    recs = recommend(model, setup.targets.user_rows, setup.targets.exclude, 200)
+    full = evaluate_lists(
+        model.name, params, recs, setup, n_resamples=n_resamples, seed=seed, fit_seconds=fit_s
+    )
+    held = evaluate_lists(
+        model.name, params, recs[keep], heldout, n_resamples=n_resamples, seed=seed
+    )
+    return full, held
 
 
 def _metric_name(name: str) -> str:
@@ -323,12 +373,13 @@ def _metric_name(name: str) -> str:
 
 def _flat_metrics(summary: dict[str, Any]) -> dict[str, float]:
     out = {}
-    for name, cell in summary["result"].items():
-        if isinstance(cell, dict) and "mean" in cell:
-            out[_metric_name(name)] = float(cell["mean"])
-    if "recall@100_minus_ease" in summary:
-        diff = summary["recall@100_minus_ease"]
-        out |= {f"recall_at_100_minus_ease_{k}": float(v) for k, v in diff.items()}
+    for section, prefix in (("result", ""), ("heldout", "heldout_")):
+        for name, cell in summary[section].items():
+            if isinstance(cell, dict) and "mean" in cell:
+                out[prefix + _metric_name(name)] = float(cell["mean"])
+    for key in ("recall@100_minus_ease", "recall@100_minus_ease_heldout"):
+        if key in summary:
+            out |= {f"{_metric_name(key)}_{k}": float(v) for k, v in summary[key].items()}
     return out
 
 
@@ -398,8 +449,8 @@ def main(argv: list[str] | None = None) -> None:
     log.info(
         "done",
         extra={
-            "recall@100": summary["result"]["recall@100"],
-            "vs_ease": summary.get("recall@100_minus_ease"),
+            "heldout_recall@100": summary["heldout"]["recall@100"],
+            "heldout_vs_ease": summary.get("recall@100_minus_ease_heldout"),
         },
     )
 

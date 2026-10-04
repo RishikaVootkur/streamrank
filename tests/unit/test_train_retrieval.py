@@ -15,8 +15,9 @@ from streamrank.models.baselines import Popularity
 from streamrank.models.train_retrieval import (
     TrainConfig,
     TwoTowerRecommender,
+    early_stop_users,
     run,
-    subset_targets,
+    split_targets,
 )
 from streamrank.models.two_tower import TwoTowerConfig
 
@@ -69,14 +70,23 @@ def test_recommender_trains_and_beats_popularity(
     assert np.isfinite(scores).all()
 
 
-def test_subset_targets_keeps_requested_users(
+def test_split_targets_partitions_users(data: tuple[Path, pl.DataFrame, pl.DataFrame]) -> None:
+    setup = load_setup(data[0], "val")
+    ids = setup.train.user_ids[setup.targets.user_rows]
+    inside, outside = split_targets(setup.targets, ids[:5], setup.train)
+    assert inside.user_rows.tolist() == setup.targets.user_rows[:5].tolist()
+    assert inside.relevant.shape[0] == 5
+    assert outside.user_rows.size == setup.targets.user_rows.size - 5
+    assert not set(inside.user_rows) & set(outside.user_rows)
+
+
+def test_early_stop_users_default_to_a_seeded_half(
     data: tuple[Path, pl.DataFrame, pl.DataFrame],
 ) -> None:
     setup = load_setup(data[0], "val")
-    ids = setup.train.user_ids[setup.targets.user_rows]
-    sub = subset_targets(setup.targets, ids[:5], setup.train)
-    assert sub.user_rows.tolist() == setup.targets.user_rows[:5].tolist()
-    assert sub.relevant.shape[0] == 5
+    a = early_stop_users(setup, None, seed=3)
+    assert a.size == setup.targets.user_rows.size // 2
+    assert np.array_equal(a, early_stop_users(setup, None, seed=3))
 
 
 def test_run_writes_artifacts(
@@ -108,4 +118,9 @@ def test_run_writes_artifacts(
     saved = json.loads((out / "summary.json").read_text())
     assert saved["result"]["model"] == "two_tower"
     assert "recall@100_minus_ease" in summary
+    assert "recall@100_minus_ease_heldout" in summary
+    assert (
+        summary["heldout"]["n_users"] + summary["n_early_stop_users"]
+        == (summary["result"]["n_users"])
+    )
     assert np.load(out / "item_vectors.npy").shape[1] == SMALL.dim

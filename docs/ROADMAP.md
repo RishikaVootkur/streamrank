@@ -5,7 +5,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 ## Milestones
 
 - [x] M0 Scaffold, CI, guards
-- [ ] M1 Data ingest, validation, temporal split, synthetic generator
+- [x] M1 Data ingest, validation, temporal split, synthetic generator
 - [ ] M2 Evaluation library and baselines
 - [ ] M3 PySpark offline features and Feast
 - [ ] M4 Two-tower retrieval with sequential user tower
@@ -23,7 +23,15 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 
 ## Results
 
-No results yet.
+### Data split (M1)
+
+Global temporal split of MovieLens 32M: T1 = 2020-11-05, T2 = 2022-02-01 (5% of interactions each for validation and test). Details in [data-split.md](data-split.md) and [ADR 0002](adr/0002-global-temporal-split.md).
+
+| Partition | Interactions | Users | Users with train history |
+| --- | ---: | ---: | ---: |
+| train | 28,800,182 | 186,687 | |
+| val | 1,600,010 | 14,113 | 6,742 |
+| test | 1,600,012 | 13,718 | 5,199 |
 
 ## Blocked or changed
 

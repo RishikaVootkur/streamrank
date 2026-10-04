@@ -59,6 +59,7 @@ def test_render_reports_intervals_and_verdicts(tmp_path: Path) -> None:
     assert "Baselines on test" in doc
     assert "| No log-Q correction | 0.1800 [0.1700, 0.1900] |" in doc
     assert "Serving latency" not in doc  # optional sections without files are skipped
+    assert "No log-Q correction" in block
 
 
 def test_splice_replaces_only_the_marked_block() -> None:

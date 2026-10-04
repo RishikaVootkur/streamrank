@@ -107,7 +107,7 @@ def ablation_table(retrieval_dir: Path) -> list[str]:
     if not rows:
         return []
     return [
-        "### Two-tower ablations (validation, 10% user sample)",
+        "#### Two-tower ablations (validation, 10% user sample)",
         "",
         "Recall@100 on the sample's users that early stopping did not use.",
         "",
@@ -220,6 +220,7 @@ def render(art: Path) -> tuple[str, str]:
     retrieval = _load(final / "retrieval" / "summary.json")
     two_stage = _load(final / "two_stage_test.json")
     head = headline(retrieval, two_stage)
+    ablations = ablation_table(art / "retrieval")
     doc = [
         "# Results",
         "",
@@ -236,10 +237,11 @@ def render(art: Path) -> tuple[str, str]:
     base_val = art / "baselines" / "results.json"
     if base_val.exists():
         doc += baselines_table(_load(base_val), "Baselines on validation")
-    doc += ablation_table(art / "retrieval")
+    doc += ablations
     doc += optional_sections(art)
     doc += serving_section(art)
-    return "\n".join(head) + "\n", "\n".join(doc).rstrip() + "\n"
+    block = [*head, "", *ablations] if ablations else head
+    return "\n".join(block).rstrip() + "\n", "\n".join(doc).rstrip() + "\n"
 
 
 def splice(readme: str, block: str) -> str:

@@ -37,7 +37,7 @@ More results are in [docs/results.md](docs/results.md): baselines on both period
 
 What the numbers say:
 
-- EASE, a linear item-to-item model, is the strongest single model on both periods. On test, the two-tower model trails it on Recall@100, and also trails ALS (0.2524). [ADR 0006](docs/adr/0006-two-tower-retrieval.md) analyzes the gap by user segment.
+- EASE, a linear item-to-item model, is the strongest single model on both periods. On test, the two-tower model trails it on Recall@100, and ALS scores higher too (0.2524 against 0.2410). [ADR 0006](docs/adr/0006-two-tower-retrieval.md) analyzes the gap by user segment.
 - The two-tower model stays as the retrieval stage anyway. It serves from a nearest-neighbor index in under a millisecond over the whole catalog, and it embeds new items from their content. EASE keeps a dense item-by-item matrix (20,000 items here, 1.6 GB) and cannot score items it has not seen in training.
 - The ranker adds a clear NDCG@10 gain over retrieval order on both periods (+0.035 on validation, +0.024 on test). The full system tied EASE on validation but trails it on test.
 - A replay of real next events with team-draft interleaving tells a different story ([ADR 0011](docs/adr/0011-online-test-simulation.md)). There the ranker only ties retrieval order, while retrieval clearly beats recent popularity. The offline metric rewards long-horizon relevance; the replay rewards the very next event, which is what the sequential model was trained to predict.
@@ -89,7 +89,7 @@ You need [uv](https://docs.astral.sh/uv/), Docker, and GNU Make. No API keys or 
 ```bash
 make setup                 # Python 3.12 environment, .env from .env.example, git hooks
 make data split            # download MovieLens 32M (checksum verified), split by time
-make up features           # Redis, Postgres, MLflow; Spark features; Feast online store
+make infra features        # Redis, Postgres, MLflow; Spark features; Feast online store
 make baselines train-retrieval build-index train-ranker
 make export-onnx serving-artifacts
 make up smoke              # API, demo, Grafana; one end-to-end request
@@ -104,7 +104,7 @@ make kind-up helm-install  # optional: Kubernetes on kind with an HPA
 
 | Path | Contents |
 | --- | --- |
-| `src/streamrank/` | data, features, models, retrieval, ranking, serving, streaming, simulation, monitoring, demo |
+| `src/streamrank/` | data, evaluation, features, models, retrieval, ranking, serving, streaming, simulation, monitoring, demo |
 | `pipelines/spark/` | offline feature job |
 | `feature_repo/` | Feast definitions |
 | `services/` | Dockerfiles for the API, Spark, streaming job, MLflow, and demo |

@@ -39,8 +39,8 @@ MovieLens files stay in `data/` (gitignored) and are never committed. Tests use 
 ## 3. Features
 
 ```bash
-make up                 # Redis, Postgres, MLflow (and the API once serving artifacts exist)
-make features           # Spark job in Docker, Feast apply, Redis online store filled at T1
+make infra              # Redis, Postgres, MLflow
+make features           # Spark job in Docker, Feast apply, Redis online store filled up to the validation cutoff (2020-11-05)
 make test-spark         # optional: Spark-vs-Polars parity tests inside the Spark image
 ```
 
@@ -48,9 +48,9 @@ make test-spark         # optional: Spark-vs-Polars parity tests inside the Spar
 
 ```bash
 make baselines          # tune on the 10% sample, evaluate on full validation (about 12 min)
-make train-retrieval RETRIEVAL_ARGS='--recent-window-prob 0.5 --temperature 0.1 --dropout 0.3 --epochs 10 --time-limit-minutes 80'
-                        # two-tower on MPS, about 9 min per epoch, early stopping on the sample's users
-make build-index        # export vectors, benchmark FAISS indexes, save HNSW
+make train-retrieval    # two-tower on MPS with the chosen settings, about 9 min per epoch,
+                        # early stopping on the sample's users
+make build-index        # export vectors, benchmark FAISS indexes, save HNSW (INDEX_CHOICE)
 make train-ranker       # candidates, ranker features, Optuna-tuned LambdaMART, ONNX export
 make two-stage-report   # two-stage system against EASE on the ranker's held-out users
 ```

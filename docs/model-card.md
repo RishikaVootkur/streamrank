@@ -3,9 +3,9 @@
 ## Model details
 
 - **System.** Two stages behind one API. A two-tower retrieval model returns 200 candidates from the full catalog, and a LambdaMART ranker orders them into the top 10. Unknown users get a popularity fallback.
-- **Retrieval.** User tower: a 2-layer causal transformer (SASRec-style, dimension 128, 2 heads) over the last 200 events, each embedded from its item, its positive flag, and the time gap since the previous event. User statistics enter at the ranker instead of the user tower. Item tower: item ID, genres, release-year bucket, and tags. Trained with sampled softmax over in-batch and 2,048 random negatives, with log-Q correction by inclusion probability, temperature 0.1, and dropout 0.3, on Apple MPS. About 10 million parameters. Served as ONNX, with a FAISS HNSW index (M = 16, efSearch = 400).
+- **Retrieval.** User tower: a 2-layer causal transformer (SASRec-style, dimension 128, 2 heads) over the last 200 events, each embedded from its item, its positive flag, and the time gap since the previous event. User statistics are ranker features; the user tower uses only the event sequence. Item tower: item ID, genres, release-year bucket, and tags. Trained with sampled softmax over in-batch and 2,048 random negatives, with log-Q correction by inclusion probability, temperature 0.1, and dropout 0.3, on Apple MPS. About 10 million parameters. Served as ONNX, with a FAISS HNSW index (M = 16, efSearch = 400).
 - **Ranker.** LightGBM LambdaMART over 19 features: retrieval score and rank, user activity and rating statistics, item popularity over all time, 30 days, and 7 days, item age, rating statistics, genre affinity, and release-year gap. Hyperparameters were tuned with Optuna. Served as ONNX.
-- **Versions.** The final retrieval model was trained on all interactions before 2022-02-01. The ranker was trained on validation-period labels. Code, configuration, data hashes, and seeds are recorded in each stage's `manifest.json` and in MLflow.
+- **Versions.** The deployed API and demo serve the validation-period models: retrieval trained on interactions before 2020-11-05 and the ranker trained on validation labels. For the test numbers below, retrieval was refitted on all interactions before 2022-02-01 and the same ranker applied. Code, configuration, data hashes, and seeds are recorded in each stage's `manifest.json` and in MLflow.
 - **License.** MIT for the code. MovieLens terms apply to the data.
 
 ## Intended use
@@ -42,10 +42,10 @@ The ranker improves NDCG@10 over retrieval order by +0.0237 [+0.0206, +0.0270]. 
 
 ## Limitations and risks
 
-- **Popularity bias.** The ranker's strongest features after retrieval rank are recent popularity, and coverage of the catalog is low for every model. Niche movies are rarely recommended.
+- **Popularity bias.** In the ranker, 30-day popularity is second only to retrieval rank, and 7-day popularity is fourth. Coverage of the catalog is low for every model. Niche movies are rarely recommended.
 - **Two-tower against EASE.** The two-tower model trails EASE, a linear item-to-item model, on recall ([ADR 0006](adr/0006-two-tower-retrieval.md)). It is kept for serving reasons: index retrieval, updates from the latest events, and content-based embeddings for new items.
 - **Offline against online.** The ranker's offline NDCG gain did not appear in the next-event replay ([ADR 0011](adr/0011-online-test-simulation.md)). Offline metrics here reward long-horizon relevance.
-- **Explicit ratings as implicit feedback.** A rating means the user watched and chose to rate a movie. That is not the same as a click or a view, and rating behavior changed over the 28 years of data.
+- **Explicit ratings as implicit feedback.** A rating means the user watched and chose to rate a movie. It is a weaker signal of interest than a click or a view, and rating behavior changed over the 28 years of data.
 - **Session features.** Session features are computed online and parity-tested, but the ranker was trained on batch features only. The last few minutes of activity reach the recommendations through the user tower's updated sequence.
-- **Drift.** The drift job flags item popularity shift between the 90 days before each cutoff, largely driven by lower overall rating volume ([drift.md](drift.md)).
+- **Drift.** The drift job flags a shift in item popularity between the 90 days before each cutoff, alongside a one-third drop in rating volume ([drift.md](drift.md)).
 - **Cold start.** New users get popular movies until they have history. New items get embeddings from content, but the ranker's popularity features are zero for them.

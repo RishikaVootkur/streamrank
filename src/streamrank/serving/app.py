@@ -133,6 +133,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await anyio.to_thread.run_sync(engine.recommend, warm, 10)
     app.state.engine = engine
     app.state.redis = client
+    # The engine holds the GIL for most of a request, so extra threads add no throughput.
+    # Under overload, the default 40 threads contend for the GIL and each request costs
+    # several times more CPU; a small cap keeps the backlog in the event loop instead.
+    app.state.limiter = anyio.CapacityLimiter(int(os.environ.get("ENGINE_THREADS", "2")))
     app.state.ready = True
     log.info(
         "ready",
@@ -174,7 +178,9 @@ async def recommendations(user_id: int, k: int = Query(10, ge=1, le=100)) -> dic
         raise HTTPException(status_code=503, detail="not ready")
     t0 = time.perf_counter()
     try:
-        rec = await anyio.to_thread.run_sync(app.state.engine.recommend, user_id, k)
+        rec = await anyio.to_thread.run_sync(
+            app.state.engine.recommend, user_id, k, limiter=app.state.limiter
+        )
     except Exception:
         REQUESTS.labels(source="error", status="500").inc()
         log.exception("recommendation failed", extra={"user_id": user_id})

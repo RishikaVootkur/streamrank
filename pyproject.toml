@@ -78,6 +78,7 @@ ignore = ["PLR0913", "S311"]  # S311: randomness here is for ML, never for secur
 
 [tool.ruff.lint.per-file-ignores]
 "pipelines/spark/**" = ["N812"]  # `functions as F` is the PySpark convention
+"src/streamrank/models/**" = ["N812"]  # `functional as F` is the PyTorch convention
 "tests/**" = ["PLR2004", "NPY002", "S101", "S108", "S603", "S607"]
 
 [tool.mypy]

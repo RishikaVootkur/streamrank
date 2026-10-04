@@ -22,10 +22,34 @@ TARGET_OPSET = 15  # highest opset the LightGBM converter supports
 MAX_ABS_DIFF = 1e-5
 
 
+def float32_thresholds(booster: lgb.Booster) -> lgb.Booster:
+    """The same model with every split threshold rounded down to a float32 value.
+
+    ONNX tree ensembles store thresholds as float32, and the converter rounds LightGBM's
+    double thresholds to the nearest float32. A float32 feature equal to a threshold that
+    rounded up would then branch the other way. Rounding each threshold t down to the
+    largest float32 not above t changes nothing for float32 inputs (no float32 value lies
+    between the two), and the float32 copy is exact.
+    """
+    lines = booster.model_to_string().splitlines()
+    for i, line in enumerate(lines):
+        if not line.startswith("threshold="):
+            continue
+        values = np.array(line.split("=", 1)[1].split(), dtype=np.float64)
+        f32 = values.astype(np.float32)
+        above = f32.astype(np.float64) > values
+        f32[above] = np.nextafter(f32[above], np.float32(-np.inf))
+        lines[i] = "threshold=" + " ".join(repr(float(v)) for v in f32)
+    # Tree byte offsets no longer match the rewritten text; LightGBM parses trees in order
+    # when they are absent.
+    lines = [line for line in lines if not line.startswith("tree_sizes=")]
+    return lgb.Booster(model_str="\n".join(lines) + "\n")
+
+
 def convert(booster: lgb.Booster, path: Path) -> Path:
     """Write the booster as an ONNX tree ensemble with one float input `features`."""
     model = onnxmltools.convert_lightgbm(
-        booster,
+        float32_thresholds(booster),
         initial_types=[("features", FloatTensorType([None, len(FEATURES)]))],
         target_opset=TARGET_OPSET,
         zipmap=False,

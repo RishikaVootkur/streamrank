@@ -23,7 +23,8 @@ export const options = {
   thresholds: {
     'http_req_duration{phase:load}': ['p(99)<50'],
     'http_req_failed{phase:load}': ['rate<0.01'],
-    'dropped_iterations{phase:load}': ['count==0'],
+    // k6 tags dropped iterations by scenario name, not by custom scenario tags.
+    'dropped_iterations{scenario:load}': ['count==0'],
   },
 };
 

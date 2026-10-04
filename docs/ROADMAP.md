@@ -7,7 +7,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M0 Scaffold, CI, guards
 - [x] M1 Data ingest, validation, temporal split, synthetic generator
 - [x] M2 Evaluation library and baselines
-- [ ] M3 PySpark offline features and Feast
+- [x] M3 PySpark offline features and Feast
 - [ ] M4 Two-tower retrieval with sequential user tower
 - [ ] M5 FAISS index
 - [ ] M6 LightGBM LambdaMART ranker
@@ -44,6 +44,10 @@ Full split, validation partition: 6,463 warm users ranked against all 65,723 cat
 | Item KNN | 0.1066 [0.1024, 0.1109] | 0.2311 [0.2252, 0.2370] | 0.3384 [0.3319, 0.3452] | 0.1087 [0.1044, 0.1130] |
 | EASE | 0.1464 [0.1415, 0.1515] | **0.2854 [0.2795, 0.2912]** | 0.3902 [0.3833, 0.3965] | 0.1484 [0.1432, 0.1534] |
 | ALS | 0.1300 [0.1253, 0.1347] | 0.2643 [0.2583, 0.2701] | 0.3670 [0.3607, 0.3737] | 0.1281 [0.1234, 0.1325] |
+
+### Offline features (M3)
+
+`make features` on MovieLens 32M (snapshots from 2019-11-01): Spark in Docker writes 1,279,732 user and 5,552,647 item snapshot rows in 66 s, then Feast loads 288,533 entity keys into Redis (118 s end to end). Spark output equals the reference definitions on every row in parity tests, and 50 random real rows recomputed from raw ratings had 0 mismatches. See [ADR 0004](adr/0004-offline-features-spark.md) and [ADR 0005](adr/0005-feature-store-feast.md).
 
 ## Blocked or changed
 

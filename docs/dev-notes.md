@@ -41,3 +41,12 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - New models: implement `fit(TrainData)` and `score(user_rows) -> (n, n_items)` and call
   `eval.evaluate.fit_and_evaluate`; compare with `metrics.paired_difference` on per-user arrays.
 - CI installs every dependency group; torch resolves to the CPU wheel index on Linux.
+
+## Features
+- Specs: `streamrank.features.definitions` (shared by Spark and streaming). Snapshot at midnight
+  `s` covers days before `s`; rows on d+1 and d+1+W; boundary row at `--from-date`.
+- `make test-spark` runs Spark parity tests in the Spark image (no Java on the host).
+- `make features`: Spark job (Docker) then `feast apply` and materialize into Redis. Needs
+  `docker compose up redis`; Redis address from `REDIS_CONNECTION_STRING`.
+- Feast caps pandas < 3, redis-py < 8, prometheus-client < 0.25 for the whole lock.
+- Online reads: `streamrank.features.store.online_features(store, USER_REFS, "user_id", ids)`.

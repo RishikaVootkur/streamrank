@@ -2,7 +2,7 @@
 
 Item vectors from `artifacts/retrieval/two_tower_full` (65,723 items, dimension 128); 6,463 validation users as queries. Each query fetches 400 items so that 200 remain after removing the user's training items. Latency is single-threaded, one query at a time, over 1,000 queries.
 
-Chosen index: HNSW M=16, efSearch=400 (see ADR 0007). Latency was measured on a laptop with other jobs running; medians are stable, single p99 values are noisy.
+Chosen index: HNSW M=16, efSearch=400 (see ADR 0007). Latency was measured on a laptop with other jobs running, so values are noisy (p99 most of all; see the IVF1024 refine rows, where nprobe = 64 measured faster than nprobe = 32).
 
 ![Recall versus latency](faiss-recall-latency.png)
 

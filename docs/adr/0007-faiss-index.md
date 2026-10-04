@@ -29,18 +29,18 @@ Benchmark on the final model's vectors, all 6,463 warm validation users as queri
 | HNSW M=32, ef=400 | 0.9994 | 0.2569 | 0.37 | 0.62 | 51.5 |
 | IVF256-PQ32, nprobe=32 | 0.8817 | 0.2513 | 0.22 | 0.43 | 2.9 |
 | IVF256-PQ32 + refine, nprobe=32 | 0.9941 | 0.2568 | 0.70 | 3.81 | 36.5 |
-| IVF1024-PQ32 + refine, nprobe=64 | 0.9942 | 0.2565 | 0.24 | 0.35 | 36.9 |
+| IVF1024-PQ32 + refine, nprobe=64 (latency suspect, see below) | 0.9942 | 0.2565 | 0.24 | 0.35 | 36.9 |
 
 - HNSW at ef = 400 finds 99.92% of the exact top 200 and leaves downstream Recall@100 unchanged (0.2569, same as exact), at a quarter of exact search's median latency. Larger M or ef buys nothing measurable.
-- IVF-PQ without re-ranking loses 11 to 31% of the exact neighbors and 0.006 to 0.023 Recall@100. Re-ranking recovers recall but needs the full vectors again (36.5 MB), which removes the memory advantage.
-- Exact search would also meet the budget at this catalog size (p99 2.5 ms). HNSW is chosen for headroom: exact cost grows linearly with the catalog, about 13 ms per query at a million items.
+- IVF-PQ without re-ranking loses 10 to 31% of the exact neighbors and 0.006 to 0.023 Recall@100. Re-ranking recovers recall but needs the full vectors again (36.5 MB), which removes the memory advantage.
+- Exact search would also meet the budget at this catalog size (p99 2.5 ms). HNSW is chosen for headroom: exact cost grows linearly with the catalog (an estimated 16 ms per query at a million items, extrapolated from the measured median, not measured).
 - The serving engine re-scores the retrieved candidates exactly with the item vectors, so the retrieval-score feature the ranker sees does not depend on the index type.
 - On macOS, FAISS cannot share a process with PyTorch or LightGBM (each bundles an OpenMP runtime), so vectors are exported by a separate PyTorch process and the benchmark imports FAISS only.
 
 ## Consequences
 
 - `make build-index` exports vectors, runs the benchmark, and saves the chosen index (`INDEX_CHOICE`) with its item IDs; the API restores efSearch from the sidecar file.
-- Latencies were measured on a laptop with other jobs running. The median is stable, but single p99 values are noisy (for example, IVF1024 with re-ranking measured faster at nprobe = 64 than at nprobe = 32), so the choice relies on recall and median latency.
+- Latencies were measured on a laptop with other jobs running, so they are noisy, including some medians: IVF1024 with re-ranking measured a 0.46 ms median at nprobe = 32 and 0.24 ms at nprobe = 64, which cannot both be right since a larger nprobe does more work. The HNSW choice does not depend on those IVF rows; it rests on recall and on HNSW's consistent sub-millisecond medians across all settings.
 
 ## Sources
 

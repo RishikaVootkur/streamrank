@@ -50,6 +50,20 @@ log = logging.getLogger(__name__)
 FloatArray = npt.NDArray[np.float32]
 IntArray = npt.NDArray[np.int64]
 EARLY_STOP_METRIC = "recall@100"
+# Batches have varying shapes (unique targets, loss positions), so the MPS allocator caches
+# ever more buffer sizes; releasing the cache periodically keeps memory flat.
+EMPTY_CACHE_EVERY = 50
+
+
+def _release_cached_memory(device: torch.device) -> None:
+    if device.type == "mps":
+        torch.mps.empty_cache()
+
+
+def _device_memory_gb(device: torch.device) -> float:
+    if device.type == "mps":
+        return float(torch.mps.driver_allocated_memory()) / 1e9
+    return 0.0
 
 
 @dataclass(frozen=True)
@@ -141,6 +155,7 @@ class TwoTowerRecommender:
                 "epoch": float(epoch + 1),
                 "loss": float(np.mean(losses)),
                 "minutes": (time.perf_counter() - start) / 60,
+                "device_memory_gb": _device_memory_gb(self.device),
             }
             self._items = None
             if self.early_stop_targets is not None:
@@ -179,7 +194,7 @@ class TwoTowerRecommender:
             raise RuntimeError("model not initialized")
         self.model.train()
         losses = []
-        for batch_users in np.array_split(rng.permutation(users), n_batches):
+        for step, batch_users in enumerate(np.array_split(rng.permutation(users), n_batches)):
             batch = training_batch(
                 self._seqs,
                 batch_users,
@@ -196,6 +211,9 @@ class TwoTowerRecommender:
             opt.step()
             sched.step()
             losses.append(loss.item())
+            if step % EMPTY_CACHE_EVERY == 0:
+                _release_cached_memory(self.device)
+        _release_cached_memory(self.device)
         return losses
 
     def item_vectors(self) -> torch.Tensor:

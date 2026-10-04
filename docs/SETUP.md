@@ -39,6 +39,7 @@ MovieLens files stay in `data/` (gitignored) and are never committed. Tests use 
 ## 3. Features
 
 ```bash
+make down               # Spark needs about 5 GB of Docker's memory: stop the serving stack
 make infra              # Redis, Postgres, MLflow
 make features           # Spark job in Docker, Feast apply, Redis online store filled up to the validation cutoff (2020-11-05)
 make test-spark         # optional: Spark-vs-Polars parity tests inside the Spark image

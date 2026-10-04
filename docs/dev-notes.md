@@ -30,6 +30,8 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432, kind API 1
 - Synthetic data: `python -m streamrank.data.synthetic --out <dir>` writes MovieLens-style CSVs.
 
 ## Gotchas
+- `make features` runs Spark with a 4 GB driver; with the full Compose stack up, Docker's
+  8 GB VM kills it ("Answer from Java side is empty"). Run `make down` first.
 - `.gitignore` ignores `data/` everywhere except `src/streamrank/data/`, and all `*.csv`.
 - Pin GitHub Actions to full version tags; `astral-sh/setup-uv` has no floating major tag.
 - `shap` does not build against NumPy 2.5; use LightGBM `pred_contrib=True` for SHAP values.

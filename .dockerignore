@@ -1,12 +1,6 @@
-.git
-.venv
-.env
+# Hidden files and folders (.git, .venv, .env, tool caches) never belong in an image.
+.*
 data
 artifacts
 mlruns
-.local
-.claude
 **/__pycache__
-.mypy_cache
-.ruff_cache
-.pytest_cache

@@ -14,8 +14,8 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M7 Serving API
 - [x] M8 Streaming session features
 - [x] M9 Online test simulation
-- [ ] M10 Observability, demo UI, Kubernetes
-- [ ] M11 Final run, docs, release
+- [x] M10 Observability, demo UI, Kubernetes
+- [x] M11 Final run, docs, release
 
 ## Scope notes
 
@@ -93,7 +93,15 @@ The ranker's offline NDCG lift does not carry over to next-event replay; the san
 
 Helm chart on a one-node kind cluster: API Deployment, Redis started from a snapshot of the serving state, and a CPU HPA (60% of a 500m request, 1 to 4 replicas). Under k6 at 150 requests per second from one replica, the HPA scaled 1 to 3 within 30 s of saturation and to 4 a minute later; no errors or restarts, median 6.5 ms, p99 1.9 s and 243 dropped requests from the minutes before scale-out. Steady state at 4 replicas with kept-alive connections: p99 16.5 ms. Load testing led to a cap on concurrent engine work in the API. See [ADR 0012](adr/0012-kubernetes-deployment.md).
 
+### Final run (M11)
+
+Retrieval refitted on train + validation for the 5 epochs early stopping chose on validation, and scored on the test period (6,601 warm users) with the validation-trained ranker and baselines refitted on the same history. Nothing was tuned or early-stopped on test labels. Two-tower Recall@100 0.2410 [0.2350, 0.2467] against EASE 0.2697 [0.2642, 0.2757]. Two-stage NDCG@10 0.1337 [0.1292, 0.1384] against EASE 0.1594 [0.1544, 0.1649]. The ranker's lift over retrieval order is +0.0237 [+0.0206, +0.0270]. All numbers are in [results.md](results.md), written by `make report`.
+
 ## Blocked or changed
 
 - M4: the two-tower retrieval model does not beat EASE beyond the interval (Recall@100 -0.030 [-0.037, -0.023]). Tried: recent-biased training windows (+0.025 on the sample), temperature and dropout tuning, inclusion-probability log-Q. The gap is analyzed in ADR 0006: it ties EASE for very short and very long histories and loses most for moderate histories and recently active users. The two-tower model stays as the retrieval stage because EASE cannot be served from a nearest-neighbor index or embed new items, and the ranker stage recovers ranking quality.
+- M4: the user tower has no static user features. Each event's embedding carries the positive flag and the time gap since the previous event, and user statistics (activity, rating mean, tenure) are ranker features.
+- M6/M8: session features are computed online and parity-tested (ADR 0010), but the ranker was trained on batch features only. Its training examples are built at one cutoff, and almost no user has events in the 30 minutes before it, so session features would be constant in training. Recent activity reaches recommendations through the user tower's sequence, which the stream updates on every event.
+- M11: on the test period the two-stage system trails EASE on NDCG@10 (-0.0257 [-0.0310, -0.0207]), where it tied on validation (+0.0033 [-0.0044, +0.0108]). The ranker still adds a clear gain over retrieval order, and the candidates it reorders already trail EASE (ADR 0006). No further tuning was done on test.
+- M7: p99 under 50 ms held up to 250 requests per second on a quiet laptop, but only up to about 100 with other work running (load average about 5): p99 41 ms at 100, 114 ms at 150. The single API worker is bound by Python's global interpreter lock, so more worker processes or replicas (as on kind) are the way to add headroom. Serving numbers for both conditions are in [results.md](results.md).
 - SHAP importance for the ranker uses LightGBM's built-in TreeSHAP (`pred_contrib=True`). The `shap` package currently resolves to an old `llvmlite` that fails to build with NumPy 2.5.

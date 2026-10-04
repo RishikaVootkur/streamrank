@@ -197,24 +197,32 @@ def load_line(path: Path, label: str) -> str | None:
 
 
 def serving_section(art: Path) -> list[str]:
-    rows = [
-        load_line(art / "serving" / f"load_summary_{rate}.json", f"Compose, {rate} req/s")
-        for rate in (100, 200, 250, 300)
-    ]
-    rows.append(
-        load_line(
-            art / "k8s" / "load_summary_kind.json",
+    serving, k8s = art / "serving", art / "k8s"
+    candidates = [
+        *(
+            (serving / f"load_summary_{rate}.json", f"Compose, {rate} req/s, quiet host (M7)")
+            for rate in (100, 200, 250, 300)
+        ),
+        *(
+            (serving / f"final_load_{rate}.json", f"Compose, {rate} req/s, busy host (final)")
+            for rate in (100, 150, 200)
+        ),
+        (
+            k8s / "load_summary_kind_150.json",
             "kind, 150 req/s, HPA scale-out from 1 pod (new connection per request)",
-        )
-    )
-    rows.append(
-        load_line(art / "k8s" / "load_summary_kind_steady_reuse.json", "kind, 150 req/s, 4 pods")
-    )
-    kept = [r for r in rows if r]
+        ),
+        (k8s / "load_summary_kind_steady_reuse.json", "kind, 150 req/s, 4 pods"),
+    ]
+    kept = [line for path, label in candidates if (line := load_line(path, label))]
     if not kept:
         return []
     return [
         "### Serving latency (k6)",
+        "",
+        "One API worker with 2 CPUs in Compose; 1 CPU per pod on kind. The quiet-host runs "
+        "were measured with nothing else running; the final runs had other work on the "
+        "laptop (load average about 5), which costs the single Python worker most of its "
+        "headroom.",
         "",
         "| Run | p50 ms | p95 ms | p99 ms | Dropped |",
         "| --- | ---: | ---: | ---: | ---: |",

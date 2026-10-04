@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift final-run report kind-up helm-install kind-load kind-down
+.PHONY: help setup lint format typecheck test test-integration infra up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift final-run report kind-up helm-install kind-load kind-down
 
 
 help: ## List targets
@@ -37,6 +37,9 @@ test-integration: ## Run integration tests against Compose services
 	$(UV) run pytest tests/integration -m integration
 	$(UV) run pytest tests/serving -m integration
 	$(UV) run pytest tests/streaming -m integration
+
+infra: ## Start Redis, Postgres, and MLflow (what the pipeline needs before serving exists)
+	$(COMPOSE) up -d --wait redis postgres mlflow
 
 up: ## Start the local stack, including the API (needs serving artifacts)
 	$(COMPOSE) --profile serving up -d --wait --build
@@ -86,7 +89,9 @@ features: features-offline ## Compute features, register them in Feast, and load
 	$(UV) run python -m streamrank.features.store --start $(FEATURES_FROM) \
 		--end-at-cutoff data/split/full
 
-RETRIEVAL_ARGS ?=
+# The settings chosen on the 10% sample (ADR 0006).
+RETRIEVAL_ARGS ?= --recent-window-prob 0.5 --temperature 0.1 --dropout 0.3 --epochs 10 \
+	--time-limit-minutes 80
 
 train-retrieval: ## Train the two-tower model on the full split and compare it with EASE
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.models.train_retrieval \
@@ -94,7 +99,7 @@ train-retrieval: ## Train the two-tower model on the full split and compare it w
 		--run-name two_tower_full $(RETRIEVAL_ARGS)
 
 RETRIEVAL_MODEL ?= artifacts/retrieval/two_tower_full
-INDEX_CHOICE ?=
+INDEX_CHOICE ?= hnsw(M=16,efC=200,ef=400)
 
 build-index: ## Export vectors, benchmark FAISS indexes, and save the chosen index
 	$(UV) run python -m streamrank.models.export_vectors --model-dir $(RETRIEVAL_MODEL)

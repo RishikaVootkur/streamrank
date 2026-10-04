@@ -99,3 +99,30 @@ def test_main_writes_doc_and_readme(tmp_path: Path) -> None:
     main(["--artifacts-dir", str(art), "--doc", str(doc), "--readme", str(readme)])
     assert doc.read_text().startswith("# Results")
     assert "Two-tower + LambdaMART ranker" in readme.read_text()
+
+
+def k6_summary(p50: float, p99: float, dropped: int = 0) -> dict[str, object]:
+    durations = {"p(50)": p50, "p(95)": p50 * 2, "p(99)": p99}
+    return {
+        "metrics": {
+            "http_req_duration{phase:load}": {"values": durations},
+            "dropped_iterations": {"values": {"count": dropped}},
+        }
+    }
+
+
+def test_serving_section_labels_runs_and_skips_missing(tmp_path: Path) -> None:
+    from streamrank.report import serving_section  # noqa: PLC0415
+
+    art = tmp_path / "artifacts"
+    assert serving_section(art) == []
+    write(art / "serving" / "load_summary_100.json", k6_summary(5.0, 7.0))
+    write(art / "serving" / "final_load_150.json", k6_summary(5.5, 110.0))
+    write(art / "k8s" / "load_summary_kind_150.json", k6_summary(6.5, 1900.0, dropped=243))
+    rows = [line for line in serving_section(art) if line.startswith(("| Compose", "| kind"))]
+    assert rows == [
+        "| Compose, 100 req/s, quiet host (M7) | 5.0 | 10.0 | 7.0 | 0 |",
+        "| Compose, 150 req/s, busy host (final) | 5.5 | 11.0 | 110.0 | 0 |",
+        "| kind, 150 req/s, HPA scale-out from 1 pod (new connection per request) | 6.5 | 13.0 "
+        "| 1900.0 | 243 |",
+    ]

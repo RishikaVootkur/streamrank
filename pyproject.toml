@@ -20,9 +20,11 @@ dependencies = [
 [dependency-groups]
 train = [
     "faiss-cpu>=1.15.1",
+    "implicit>=0.7.3",
     "lightgbm>=4.7.0",
     "mlflow>=3.16.1",
     "optuna>=5.0.0",
+    "threadpoolctl>=3.7.0",
     "torch>=2.14.1",
 ]
 serve = [
@@ -45,6 +47,14 @@ dev = [
     "ruff>=0.16.10",
     "scipy-stubs>=1.18.1.1",
 ]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12"]
@@ -82,3 +92,7 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+[[tool.mypy.overrides]]
+module = ["implicit.*"]
+ignore_missing_imports = true

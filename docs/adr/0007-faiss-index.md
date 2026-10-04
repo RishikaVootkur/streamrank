@@ -20,7 +20,7 @@ The API retrieves 200 candidates per request from 65,723 two-tower item vectors 
 
 HNSW with M = 16, efConstruction = 200, efSearch = 400. The search fetches 400 items so that 200 remain after removing items the user has already rated, and efSearch must be at least the fetch size.
 
-Benchmark on the final model's vectors, 5,816 validation users as queries, single-threaded, one query at a time (`docs/faiss-benchmark.md`, plot `docs/faiss-recall-latency.png`):
+Benchmark on the final model's vectors, all 6,463 warm validation users as queries, single-threaded, one query at a time (`docs/faiss-benchmark.md`, plot `docs/faiss-recall-latency.png`):
 
 | Index | recall@200 vs exact | Recall@100 | p50 ms | p99 ms | size MB |
 | --- | ---: | ---: | ---: | ---: | ---: |

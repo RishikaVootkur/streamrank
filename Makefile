@@ -158,6 +158,7 @@ final-run: ## Final run: refit on train + validation, score retrieval, ranker, b
 	$(UV) run python -m streamrank.ranking.build_features --partition test \
 		--candidates-dir $(FINAL_DIR)/candidates --out-dir $(FINAL_DIR)/ranker_features
 	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.two_stage --partition test \
+		--ranker-dir artifacts/ranker \
 		--features $(FINAL_DIR)/ranker_features/ranker_features_test.parquet \
 		--out $(FINAL_DIR)/two_stage_test.json
 	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.run_baselines --partition test \

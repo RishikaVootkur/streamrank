@@ -78,7 +78,8 @@ def headline(retrieval: dict[str, Any], two_stage: dict[str, Any]) -> list[str]:
         f"- Two-stage against EASE, NDCG@10: {signed(nd['difference'])} "
         f"({verdict(nd['difference'])}).",
         "- The ranker reorders the same 200 candidates, so Recall@100 is shared by both "
-        "two-tower rows.",
+        "two-tower rows. It was trained on validation labels and applied unchanged, with "
+        "features as of the test cutoff and retrieval scores from the refitted model.",
     ]
 
 
@@ -178,7 +179,7 @@ def optional_sections(art: Path) -> list[str]:
         out += [
             "### Data drift",
             "",
-            f"{d['drifted_columns']} of {len(d['columns'])} feature columns drifted between "
+            f"{d['drifted_columns']} of {len(d['columns'])} columns drifted between "
             f"{d['reference'][0]} to {d['reference'][1]} and {d['current'][0]} to "
             f"{d['current'][1]}: {', '.join(flagged) or 'none'}.",
             "",
@@ -200,7 +201,15 @@ def serving_section(art: Path) -> list[str]:
         load_line(art / "serving" / f"load_summary_{rate}.json", f"Compose, {rate} req/s")
         for rate in (100, 200, 250, 300)
     ]
-    rows.append(load_line(art / "k8s" / "load_summary_kind.json", "kind, 150 req/s from 1 pod"))
+    rows.append(
+        load_line(
+            art / "k8s" / "load_summary_kind.json",
+            "kind, 150 req/s, HPA scale-out from 1 pod (new connection per request)",
+        )
+    )
+    rows.append(
+        load_line(art / "k8s" / "load_summary_kind_steady_reuse.json", "kind, 150 req/s, 4 pods")
+    )
     kept = [r for r in rows if r]
     if not kept:
         return []
@@ -219,6 +228,10 @@ def render(art: Path) -> tuple[str, str]:
     final = art / "final"
     retrieval = _load(final / "retrieval" / "summary.json")
     two_stage = _load(final / "two_stage_test.json")
+    if retrieval.get("partition") != "test" or two_stage.get("partition") != "test":
+        raise ValueError("the final-run files must come from the test partition")
+    if retrieval["result"]["n_users"] != two_stage["users"]:
+        raise ValueError("retrieval and two-stage results cover different users")
     head = headline(retrieval, two_stage)
     ablations = ablation_table(art / "retrieval")
     doc = [
@@ -261,8 +274,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--readme", type=Path, default=Path("README.md"))
     args = p.parse_args(argv)
     block, doc = render(args.artifacts_dir)
+    readme = splice(args.readme.read_text(), block)  # fails before anything is written
     args.doc.write_text(doc)
-    args.readme.write_text(splice(args.readme.read_text(), block))
+    args.readme.write_text(readme)
     print(f"wrote {args.doc} and the results table in {args.readme}")
 
 

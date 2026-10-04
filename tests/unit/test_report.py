@@ -29,6 +29,7 @@ def make_artifacts(root: Path) -> Path:
     write(
         art / "final" / "retrieval" / "summary.json",
         {
+            "partition": "test",
             "result": row | {"model": "two_tower", "recall@100": cell(0.28)},
             "ease": row,
             "recall@100_minus_ease": cell(-0.02, 0.005),
@@ -41,7 +42,10 @@ def make_artifacts(root: Path) -> Path:
         "difference": cell(0.03, 0.02),
         "lift_over_retrieval": cell(0.04, 0.01),
     }
-    write(art / "final" / "two_stage_test.json", {"ndcg@10": metric, "recall@10": metric})
+    write(
+        art / "final" / "two_stage_test.json",
+        {"partition": "test", "users": 100, "ndcg@10": metric, "recall@10": metric},
+    )
     write(art / "final" / "baselines" / "results.json", [row])
     write(
         art / "retrieval" / "s10_abl_no_logq" / "summary.json",
@@ -60,6 +64,24 @@ def test_render_reports_intervals_and_verdicts(tmp_path: Path) -> None:
     assert "| No log-Q correction | 0.1800 [0.1700, 0.1900] |" in doc
     assert "Serving latency" not in doc  # optional sections without files are skipped
     assert "No log-Q correction" in block
+
+
+def test_render_rejects_validation_files(tmp_path: Path) -> None:
+    art = make_artifacts(tmp_path)
+    path = art / "final" / "two_stage_test.json"
+    path.write_text(path.read_text().replace('"test"', '"val"'))
+    with pytest.raises(ValueError, match="test partition"):
+        render(art)
+
+
+def test_main_writes_nothing_without_markers(tmp_path: Path) -> None:
+    art = make_artifacts(tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text("# x\n")
+    doc = tmp_path / "results.md"
+    with pytest.raises(ValueError, match="markers"):
+        main(["--artifacts-dir", str(art), "--doc", str(doc), "--readme", str(readme)])
+    assert not doc.exists()
 
 
 def test_splice_replaces_only_the_marked_block() -> None:

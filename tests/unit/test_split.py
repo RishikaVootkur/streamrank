@@ -3,7 +3,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from streamrank.common.provenance import read_manifest
+from streamrank.common.provenance import ProvenanceError, read_manifest, verify_outputs
 from streamrank.data.ingest import ingest
 from streamrank.data.split import (
     LeakageError,
@@ -159,10 +159,19 @@ def test_cli_end_to_end(tmp_path: Path) -> None:
     for sub in ("full", "sample10"):
         for name in ("train", "val", "test"):
             assert (tmp_path / "split" / sub / f"{name}.parquet").exists()
-        manifest = read_manifest(tmp_path / "split" / sub)
+        manifest = verify_outputs(tmp_path / "split" / sub)
         assert manifest["stage"] == "split"
         assert manifest["seed"] == 42
         assert manifest["data_hash"] == read_manifest(tmp_path / "processed")["data_hash"]
     text = doc.read_text()
     assert "| train |" in text
     assert "Users with train history" in text
+
+
+def test_split_refuses_unverified_input(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    generate(SyntheticConfig(n_users=100, n_items=60, seed=2)).write_csv(raw)
+    ingest(raw, tmp_path / "processed")
+    pl.DataFrame({"user_id": [1]}).write_parquet(tmp_path / "processed" / "ratings.parquet")
+    with pytest.raises(ProvenanceError):
+        main(["--processed-dir", str(tmp_path / "processed"), "--split-dir", str(tmp_path / "s")])

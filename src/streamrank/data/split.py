@@ -18,7 +18,12 @@ import polars as pl
 
 from streamrank.common.config import get_settings
 from streamrank.common.logging import configure_logging
-from streamrank.common.provenance import read_manifest, write_manifest
+from streamrank.common.provenance import (
+    begin_stage,
+    verify_outputs,
+    write_manifest,
+    write_parquet_atomic,
+)
 from streamrank.data.schemas import POSITIVE_THRESHOLD
 
 log = logging.getLogger(__name__)
@@ -146,9 +151,12 @@ def split_stats(split: Split) -> dict[str, Any]:
 
 def write_split(split: Split, out_dir: Path, cfg: SplitConfig, data_hash: str) -> dict[str, Any]:
     """Write partitions as Parquet with a manifest holding the config and statistics."""
-    out_dir.mkdir(parents=True, exist_ok=True)
+    begin_stage(out_dir)
+    outputs = []
     for name, df in split.partitions().items():
-        df.write_parquet(out_dir / f"{name}.parquet")
+        path = out_dir / f"{name}.parquet"
+        write_parquet_atomic(df, path)
+        outputs.append(path)
     stats = split_stats(split)
     write_manifest(
         out_dir,
@@ -156,6 +164,7 @@ def write_split(split: Split, out_dir: Path, cfg: SplitConfig, data_hash: str) -
         config=asdict(cfg),
         data_hash=data_hash,
         seed=cfg.seed,
+        outputs=outputs,
         extra={"t1": split.t1, "t2": split.t2, "stats": stats},
     )
     return stats
@@ -208,8 +217,8 @@ def render_stats_markdown(full: dict[str, Any], sample: dict[str, Any], cfg: Spl
 
 def run(processed_dir: Path, split_dir: Path, cfg: SplitConfig) -> dict[str, Any]:
     """Split the processed ratings and write the full split and the user sample."""
+    data_hash = str(verify_outputs(processed_dir)["data_hash"])
     ratings = pl.read_parquet(processed_dir / "ratings.parquet")
-    data_hash = str(read_manifest(processed_dir)["data_hash"])
     split = temporal_split(ratings, cfg)
     full = write_split(split, split_dir / "full", cfg, data_hash)
 

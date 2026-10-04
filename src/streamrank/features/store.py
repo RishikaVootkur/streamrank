@@ -12,7 +12,11 @@ from feast import FeatureStore
 from streamrank.common.config import get_settings
 from streamrank.features.definitions import ITEM_FEATURES, USER_FEATURES, FeatureSet
 
-DEFAULT_REPO = Path(__file__).resolve().parents[3] / "feature_repo"
+# The repo checkout's feature_repo; containers set FEATURE_REPO because an installed
+# package does not live next to it.
+DEFAULT_REPO = Path(
+    os.environ.get("FEATURE_REPO", Path(__file__).resolve().parents[3] / "feature_repo")
+)
 ITEM_CONTENT = ("item_year", "item_genres")
 STATS_VIEWS = [f"{fs.entity}_stats" for fs in (USER_FEATURES, ITEM_FEATURES)]
 STATIC_VIEWS = ["item_content"]  # stamped at the epoch, valid at any time
@@ -76,9 +80,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--start", type=_utc, required=True, help="UTC date, e.g. 2019-11-01")
-    parser.add_argument("--end", type=_utc, default=datetime.now(UTC).strftime("%Y-%m-%d"))
+    parser.add_argument("--end", type=_utc, default=None, help="UTC date (default: now)")
+    parser.add_argument(
+        "--end-at-cutoff",
+        type=Path,
+        default=None,
+        help="split directory: end at its training cutoff t1, the serving clock",
+    )
     args = parser.parse_args(argv)
-    materialize(open_store(args.repo), args.start, args.end)
+    end = args.end or datetime.now(UTC)
+    if args.end_at_cutoff is not None:
+        from streamrank.common.provenance import verify_outputs  # noqa: PLC0415
+
+        end = datetime.fromtimestamp(int(verify_outputs(args.end_at_cutoff)["t1"]), tz=UTC)
+    materialize(open_store(args.repo), args.start, end)
 
 
 if __name__ == "__main__":

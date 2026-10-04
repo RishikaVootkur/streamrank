@@ -49,6 +49,50 @@ services:
       timeout: 5s
       retries: 30
 
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: streamrank-api:local
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_CONNECTION_STRING: redis:6379
+      LOG_LEVEL: INFO
+    volumes:
+      - ${ARTIFACTS_HOST_DIR:-./artifacts}/serving:/artifacts/serving:ro
+      - ${DATA_HOST_DIR:-./data}/feast:/app/data/feast:ro
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    profiles: ["serving"]
+
+  k6:
+    image: grafana/k6:2.3.0
+    volumes:
+      - ./loadtest:/scripts:ro
+      - ${ARTIFACTS_HOST_DIR:-./artifacts}/serving:/data
+    environment:
+      BASE_URL: http://api:8000
+      RATE: ${LOAD_RATE:-100}
+      DURATION: ${LOAD_DURATION:-2m}
+    command: ["run", "/scripts/recommend.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles: ["load"]
+
 volumes:
   redis-data:
   postgres-data:

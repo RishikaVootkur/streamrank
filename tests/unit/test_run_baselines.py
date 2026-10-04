@@ -25,7 +25,7 @@ def test_quick_grid_has_one_setting_per_family() -> None:
     cands = candidates(seed=1, quick=True)
     assert [c.name for c in cands] == ["popularity", "recent_popularity", "item_knn", "ease", "als"]
     assert all(len(list(c.configs())) == 1 for c in cands)
-    assert sum(len(list(c.configs())) for c in candidates(seed=1)) == 38
+    assert sum(len(list(c.configs())) for c in candidates(seed=1)) == 42
 
 
 def test_run_writes_results_manifest_and_doc(split_dir: Path, tmp_path: Path) -> None:

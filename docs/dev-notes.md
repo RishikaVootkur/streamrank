@@ -34,3 +34,10 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - Pin GitHub Actions to full version tags; `astral-sh/setup-uv` has no floating major tag.
 - `shap` does not build against NumPy 2.5; use LightGBM `pred_contrib=True` for SHAP values.
 - `implicit` warns unless BLAS runs single-threaded: set `OPENBLAS_NUM_THREADS=1`.
+
+## Evaluation
+- `make baselines` (about 12 min): tunes on `data/split/sample10` val, evaluates on full val, writes
+  `artifacts/baselines/` and `docs/baselines.md`. Best baseline: EASE, Recall@100 0.2854.
+- New models: implement `fit(TrainData)` and `score(user_rows) -> (n, n_items)` and call
+  `eval.evaluate.fit_and_evaluate`; compare with `metrics.paired_difference` on per-user arrays.
+- CI installs every dependency group; torch resolves to the CPU wheel index on Linux.

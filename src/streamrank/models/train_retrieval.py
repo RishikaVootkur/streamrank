@@ -79,6 +79,9 @@ class TrainConfig:
     patience: int = 2
     recent_window_prob: float = 0.0  # share of training windows ending at the latest event
     time_limit_minutes: float = 85.0
+    # Stop after this many epochs of the `epochs`-long schedule (0 = run them all). The final
+    # run uses it to repeat the early-stopped epoch count without validation labels.
+    stop_after: int = 0
     seed: int = 42
 
 
@@ -167,13 +170,18 @@ class TwoTowerRecommender:
                     {_metric_name(k): v for k, v in record.items() if k != "epoch"},
                     step=epoch + 1,
                 )
-            score = record.get(f"val_{EARLY_STOP_METRIC}", -record["loss"])
+            # Without early-stopping users, keep the latest epoch.
+            score = record.get(f"val_{EARLY_STOP_METRIC}", float(epoch))
             if score > best:
                 best, bad = score, 0
                 best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
             else:
                 bad += 1
-            if bad > tcfg.patience or record["minutes"] > tcfg.time_limit_minutes:
+            if (
+                bad > tcfg.patience
+                or record["minutes"] > tcfg.time_limit_minutes
+                or epoch + 1 == tcfg.stop_after
+            ):
                 break
         if best_state is not None:
             model.load_state_dict(best_state)
@@ -335,18 +343,35 @@ def run(
     compare_ease: bool = True,
     n_resamples: int = 1000,
     run_name: str = "two_tower",
+    partition: str = "val",
 ) -> dict[str, Any]:
-    """Train on `split_dir` (validation partition), evaluate, and write results to `out_dir`."""
+    """Train on a partition's history, evaluate on its labels, and write results to `out_dir`.
+
+    `val` trains on train and early-stops on part of the validation users. `test` is the final
+    run: it trains on train + validation for a fixed number of epochs (`stop_after`), since
+    early stopping on test labels would select the model on the data that scores it.
+    """
     settings = get_settings()
-    setup = load_setup(split_dir, "val")
+    setup = load_setup(split_dir, partition)
     processed = settings.data_dir / "processed"
     movies = pl.read_parquet(processed / "movies.parquet")
     tags = pl.read_parquet(processed / "tags.parquet")
-    es_ids = early_stop_users(setup, early_stop_split, train_cfg.seed)
+    if partition == "test":
+        if early_stop_split is not None or train_cfg.stop_after < 1:
+            raise ValueError("the test run takes a fixed --stop-after and no early stopping")
+        es_ids = np.zeros(0, dtype=np.int64)
+    else:
+        es_ids = early_stop_users(setup, early_stop_split, train_cfg.seed)
     es_targets, heldout_targets = split_targets(setup.targets, es_ids, setup.train)
-    heldout = EvalSetup(train=setup.train, targets=heldout_targets, partition="val")
+    heldout = EvalSetup(train=setup.train, targets=heldout_targets, partition=partition)
     begin_stage(out_dir)
-    rec = TwoTowerRecommender(model_cfg, train_cfg, movies, tags, early_stop_targets=es_targets)
+    rec = TwoTowerRecommender(
+        model_cfg,
+        train_cfg,
+        movies,
+        tags,
+        early_stop_targets=es_targets if es_targets.user_rows.size else None,
+    )
 
     t0 = time.perf_counter()
     rec.fit(setup.train)
@@ -373,6 +398,7 @@ def run(
     )
     summary: dict[str, Any] = {
         "run_name": run_name,
+        "partition": partition,
         "n_early_stop_users": int(es_targets.user_rows.size),
         "result": result.row(),
         "heldout": held_result.row(),
@@ -479,6 +505,12 @@ def main(argv: list[str] | None = None) -> None:
         help="early-stop on the validation users of this (smaller) split",
     )
     p.add_argument("--out-dir", type=Path, default=None)
+    p.add_argument(
+        "--partition",
+        default="val",
+        choices=["val", "test"],
+        help="test: final run on train + validation history, scored on test labels",
+    )
     p.add_argument("--run-name", default="two_tower")
     p.add_argument("--experiment", default="retrieval")
     for f, default in asdict(TwoTowerConfig()).items():
@@ -509,6 +541,7 @@ def main(argv: list[str] | None = None) -> None:
             compare_ease=not args["no_ease"],
             n_resamples=args["n_resamples"],
             run_name=args["run_name"],
+            partition=args["partition"],
         )
     log.info(
         "done",

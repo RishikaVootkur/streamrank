@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -58,6 +58,9 @@ baselines: ## Tune baselines on the 10% sample and evaluate them on the full val
 retrieval-segments: ## Compare the two-tower model with EASE by user segment
 	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.segments \
 		--model-dir $(RETRIEVAL_MODEL)
+
+two-stage-report: ## Compare the two-stage system with EASE on the ranker's evaluation users
+	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.two_stage
 
 evaluate: baselines ## Run every offline evaluation
 

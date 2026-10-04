@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -72,3 +72,10 @@ features: features-offline ## Compute features, register them in Feast, and load
 	$(COMPOSE) up -d --wait redis
 	cd feature_repo && $(UV) run feast apply
 	$(UV) run python -m streamrank.features.store --start $(FEATURES_FROM)
+
+RETRIEVAL_ARGS ?=
+
+train-retrieval: ## Train the two-tower model on the full split and compare it with EASE
+	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.models.train_retrieval \
+		--split-dir data/split/full --early-stop-split data/split/sample10 \
+		--run-name two_tower_full $(RETRIEVAL_ARGS)

@@ -1,8 +1,11 @@
 .DEFAULT_GOAL := help
+-include .env
+REDIS_CONNECTION_STRING ?= localhost:$(or $(REDIS_PORT),6379)
+export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -60,7 +63,12 @@ test-spark: ## Run the Spark parity tests inside the Spark image
 	docker build -f services/spark/Dockerfile --target test -t $(SPARK_IMAGE)-test .
 	docker run --rm $(SPARK_IMAGE)-test
 
-features: spark-image ## Compute offline feature snapshots with Spark in Docker
+features-offline: spark-image ## Compute offline feature snapshots with Spark in Docker
 	docker run --rm -e HADOOP_USER_NAME=spark -e GIT_SHA=$$(git rev-parse HEAD) \
 		-v $(CURDIR)/data:/app/data $(SPARK_IMAGE) \
 		--processed-dir data/processed --out-dir data/features --from-date $(FEATURES_FROM)
+
+features: features-offline ## Compute features, register them in Feast, and load Redis
+	$(COMPOSE) up -d --wait redis
+	cd feature_repo && $(UV) run feast apply
+	$(UV) run python -m streamrank.features.store --start $(FEATURES_FROM)

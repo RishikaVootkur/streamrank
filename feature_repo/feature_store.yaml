@@ -1,0 +1,9 @@
+project: streamrank
+provider: local
+registry: ../data/feast/registry.db
+offline_store:
+  type: duckdb
+online_store:
+  type: redis
+  connection_string: ${REDIS_CONNECTION_STRING}
+entity_key_serialization_version: 3

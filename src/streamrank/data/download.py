@@ -6,6 +6,7 @@ import logging
 import shutil
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
@@ -60,8 +61,12 @@ def download(url: str, dest: Path, timeout: float = 60.0) -> None:
     """Stream `url` to `dest` through a temporary file so partial downloads never remain."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(url, timeout=timeout) as resp, tmp.open("wb") as out:  # noqa: S310
-        shutil.copyfileobj(resp, out, length=1 << 20)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, tmp.open("wb") as out:  # noqa: S310
+            shutil.copyfileobj(resp, out, length=1 << 20)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     tmp.replace(dest)
 
 
@@ -72,18 +77,26 @@ def extract(archive: Path, raw_dir: Path) -> Path:
         for name in RAW_COLUMNS:
             member = f"{ARCHIVE_DIR}/{name}"
             target = raw_dir / name
-            with zf.open(member) as src, target.open("wb") as dst:
+            tmp = target.with_suffix(target.suffix + ".part")
+            # Write through a temporary file so an interrupted run never leaves a
+            # truncated CSV that later runs would treat as complete.
+            with zf.open(member) as src, tmp.open("wb") as dst:
                 shutil.copyfileobj(src, dst, length=1 << 20)
+            tmp.replace(target)
     return raw_dir
 
 
 def ensure_dataset(
-    data_dir: Path, expected_md5: str = EXPECTED_MD5, url: str = DATASET_URL
+    data_dir: Path,
+    expected_md5: str = EXPECTED_MD5,
+    url: str = DATASET_URL,
+    published_md5: Callable[[], str] | None = None,
 ) -> Path:
     """Download (if needed), verify, and extract MovieLens 32M. Returns the raw CSV folder.
 
-    Re-running is cheap: a verified archive is not downloaded again, and CSVs are only
-    extracted when missing.
+    Re-running is cheap and works offline: a verified archive is not downloaded again,
+    and CSVs are only extracted when missing. `published_md5`, if given, is called before
+    a download to confirm the publisher's checksum still matches the pinned one.
     """
     archive = data_dir / "ml-32m.zip"
     raw_dir = data_dir / "raw"
@@ -95,6 +108,8 @@ def ensure_dataset(
             log.warning("archive checksum mismatch, downloading again")
             archive.unlink()
     if not archive.exists():
+        if published_md5 is not None and (published := published_md5()) != expected_md5:
+            raise ChecksumError(f"published MD5 {published} differs from pinned {expected_md5}")
         log.info("downloading", extra={"url": url})
         download(url, archive)
         verify(archive, expected_md5)
@@ -112,10 +127,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     settings = get_settings()
     configure_logging(settings.log_level)
-    published = fetch_published_md5()
-    if published != EXPECTED_MD5:
-        raise ChecksumError(f"published MD5 {published} differs from pinned {EXPECTED_MD5}")
-    ensure_dataset(args.data_dir or settings.data_dir)
+    ensure_dataset(
+        args.data_dir or settings.data_dir, url=DATASET_URL, published_md5=fetch_published_md5
+    )
 
 
 if __name__ == "__main__":

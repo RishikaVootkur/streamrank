@@ -73,3 +73,46 @@ def test_fetch_published_md5_reads_file_url(tmp_path: Path) -> None:
     f = tmp_path / "x.md5"
     f.write_text(f"{dl.EXPECTED_MD5}  ml-32m.zip\n")
     assert dl.fetch_published_md5(f.as_uri()) == dl.EXPECTED_MD5
+
+
+def test_published_md5_mismatch_blocks_download(tmp_path: Path) -> None:
+    source = tmp_path / "remote.zip"
+    md5 = _make_archive(source)
+    with pytest.raises(dl.ChecksumError, match="published"):
+        dl.ensure_dataset(
+            tmp_path / "data", expected_md5=md5, url=source.as_uri(), published_md5=lambda: "f" * 32
+        )
+    assert not (tmp_path / "data" / "ml-32m.zip").exists()
+
+
+def test_published_md5_not_needed_when_archive_verified(tmp_path: Path) -> None:
+    source = tmp_path / "remote.zip"
+    md5 = _make_archive(source)
+    data_dir = tmp_path / "data"
+    dl.ensure_dataset(data_dir, expected_md5=md5, url=source.as_uri())
+
+    def offline() -> str:
+        raise OSError("no network")
+
+    dl.ensure_dataset(data_dir, expected_md5=md5, url=source.as_uri(), published_md5=offline)
+
+
+def test_failed_download_leaves_no_partial_file(tmp_path: Path) -> None:
+    dest = tmp_path / "out.zip"
+    with pytest.raises(OSError):
+        dl.download((tmp_path / "missing.zip").as_uri(), dest)
+    assert not list(tmp_path.glob("*.part"))
+    assert not dest.exists()
+
+
+def test_main_uses_settings_and_module_urls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "remote.zip"
+    md5 = _make_archive(source)
+    monkeypatch.setattr(dl, "DATASET_URL", source.as_uri())
+    monkeypatch.setattr(dl, "EXPECTED_MD5", md5)
+    monkeypatch.setattr(dl, "fetch_published_md5", lambda: md5)
+    monkeypatch.setattr(dl.ensure_dataset, "__defaults__", (md5, source.as_uri(), None))
+    dl.main(["--data-dir", str(tmp_path / "data")])
+    assert (tmp_path / "data" / "raw" / "ratings.csv").exists()

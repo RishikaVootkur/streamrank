@@ -35,7 +35,7 @@ Option 2, `deploy/helm/streamrank`:
 
 The first scale-out tests showed each request costing about five times more CPU once a backlog formed, so the pods never caught up even at 4 replicas. The engine holds the GIL for most of a request, and the default 40-thread pool let dozens of requests contend for it. The API now runs at most `ENGINE_THREADS` requests at once (default 8; chart value `api.engineThreads`) and queues the rest in the event loop. A cap of 2 also fixed the backlog but raised steady-state p99 from 17 to 133 ms, because requests then wait behind Redis round trips.
 
-The same change helps the Compose container (2 CPUs) at 250 requests per second. Back to back on the same, busier host: p99 151 ms with 8 threads against 3.1 s with 40, and 12 against 1,111 dropped iterations. Both are above the 6.8 ms of ADR 0009, which was measured on a quieter host; the final run re-measures it.
+The same change helps the Compose container (2 CPUs) at 250 requests per second. Back to back on the same, busier host: p99 151 ms with 8 threads against 3.1 s with 40, and 12 against 1,111 dropped iterations. Both are above the 6.8 ms of ADR 0009, which was measured on a quieter host. Re-measured at the end with the cap and other work still running: p99 41 ms at 100 requests per second and 114 ms at 150 ([results.md](../results.md)).
 
 ## Results
 

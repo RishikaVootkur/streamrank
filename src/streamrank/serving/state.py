@@ -103,17 +103,26 @@ def read(client: redis.Redis, user_id: int) -> UserState:
 
 def append_event(
     client: redis.Redis, user_id: int, *, token: int, positive: bool, ts: int, max_len: int
-) -> None:
-    """Add one event to a user's sequence (keeping the last `max_len`) and seen set."""
+) -> bool:
+    """Add one event to a user's sequence (keeping the last `max_len`) and seen set.
+
+    Returns False without writing when the event is a redelivery (the item is already in
+    the seen set: MovieLens has one rating per user and item) or arrives out of order (older
+    than the user's latest stored event), so the stored sequence always matches what the
+    offline pipeline would build from the same events.
+    """
     seq_blob, seen_blob = cast(
         list[bytes | None], client.mget([seq_key(user_id), seen_key(user_id)])
     )
     old = unpack(seq_blob, SEQ_COLUMNS).astype(np.int64)
+    seen = unpack(seen_blob, 1).ravel().astype(np.int64)
+    if np.isin(token - 1, seen) or (old.size and ts < old[-1, 3]):
+        return False
     gap = 1 if old.size == 0 else int(gap_bucket(np.array([ts - old[-1, 3]]))[0])
-    new = np.array([[token, int(positive), gap, ts]], dtype=np.int64)
-    rows = np.concatenate([old[len(old) - (max_len - 1) :] if max_len > 1 else old[:0], new])
-    seen = np.union1d(unpack(seen_blob, 1).ravel(), np.array([token - 1]))
-    pipe = client.pipeline(transaction=False)
+    keep = old[max(0, len(old) - (max_len - 1)) :] if max_len > 1 else old[:0]
+    rows = np.concatenate([keep, np.array([[token, int(positive), gap, ts]], dtype=np.int64)])
+    pipe = client.pipeline(transaction=True)
     pipe.set(seq_key(user_id), pack(rows))
-    pipe.set(seen_key(user_id), pack(seen.astype(np.int64)))
+    pipe.set(seen_key(user_id), pack(np.union1d(seen, np.array([token - 1]))))
     pipe.execute()
+    return True

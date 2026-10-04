@@ -67,6 +67,7 @@ monitor = [
     "evidently>=0.7.23",
 ]
 demo = [
+    "redis>=6.4,<8",
     "streamlit>=1.65.0",
 ]
 

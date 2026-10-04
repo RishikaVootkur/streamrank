@@ -89,6 +89,29 @@ services:
         condition: service_healthy
     profiles: ["serving"]
 
+  demo:
+    build:
+      context: .
+      dockerfile: services/demo/Dockerfile
+    image: streamrank-demo:local
+    environment:
+      API_URL: http://api:8000
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ${ARTIFACTS_HOST_DIR:-./artifacts}/serving:/artifacts/serving:ro
+    ports:
+      - "${DEMO_UI_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    profiles: ["serving"]
+
   grafana:
     image: grafana/grafana:13.2.3
     environment:

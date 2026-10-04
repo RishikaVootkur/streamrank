@@ -78,3 +78,8 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
   anonymous viewer; dashboards provisioned from `deploy/grafana/`).
 - Dashboard "StreamRank serving": latency percentiles, throughput by source, p95 by stage,
   engine error rate (500s only), p99 against the 50 ms target.
+
+## Demo
+- `make up` also starts the Streamlit demo at http://localhost:8501 (user history from Redis,
+  recommendations from the API, "Like" appends an event to the user's serving state).
+- Likes persist in Redis until `make serving-artifacts` reloads the serving state.

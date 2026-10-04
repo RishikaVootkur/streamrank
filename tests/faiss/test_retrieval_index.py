@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from streamrank.retrieval.benchmark import evaluate_grid, filter_seen, plot, render_markdown
+from streamrank.eval.evaluate import top_k
+from streamrank.retrieval.benchmark import (
+    evaluate_grid,
+    filter_seen,
+    plot,
+    render_markdown,
+    search_unseen,
+)
 from streamrank.retrieval.index import IndexSpec, build, load, recall_vs_exact, save, search
 
 
@@ -86,7 +93,7 @@ def test_grid_report(vectors: tuple[np.ndarray, np.ndarray], tmp_path: Path) -> 
     rows = evaluate_grid(items, users[keep], relevant, exclude, grid, n_latency=20)
     assert rows[0]["recall@200_vs_exact"] == 1.0
     assert rows[1]["recall@200_vs_exact"] > 0.8
-    plot(rows, tmp_path / "p.png")
+    plot(rows, tmp_path / "p.png", 3000)
     assert (tmp_path / "p.png").stat().st_size > 0
     text = render_markdown(
         rows, {"model_dir": "m", "n_items": 3000, "dim": 32, "n_queries": 10, "n_latency": 20}
@@ -94,3 +101,14 @@ def test_grid_report(vectors: tuple[np.ndarray, np.ndarray], tmp_path: Path) -> 
     assert "| flat | 1.0000 |" in text
     with pytest.raises(ValueError, match="exact"):
         evaluate_grid(items, users[keep], relevant, exclude, grid[1:], n_latency=5)
+
+
+def test_search_unseen_matches_full_catalog_ranking(vectors: tuple[np.ndarray, np.ndarray]) -> None:
+    items, users = vectors
+    rng = np.random.default_rng(2)
+    # Some users have seen most of the catalog, more than any fixed overfetch would cover.
+    seen = rng.random((users.shape[0], items.shape[0])) < rng.random((users.shape[0], 1)) * 0.9
+    exclude = sp.csr_array(seen.astype(np.float32))
+    got = search_unseen(build(items, IndexSpec("flat")).index, users, exclude, 50, items.shape[0])
+    expected = top_k(users @ items.T, exclude, 50)
+    np.testing.assert_array_equal(got, expected)

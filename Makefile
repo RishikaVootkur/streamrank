@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -26,9 +26,10 @@ format: ## Apply lint fixes and formatting
 typecheck: ## Run mypy in strict mode on src/
 	$(UV) run mypy
 
-test: ## Run unit tests with coverage (FAISS tests in their own process; see dev notes)
+test: ## Run unit tests with coverage (FAISS and LightGBM tests in their own processes)
 	$(UV) run pytest tests/unit --cov --cov-report=
-	$(UV) run pytest tests/faiss --cov --cov-append --cov-report=term --cov-fail-under=70
+	$(UV) run pytest tests/faiss --cov --cov-append --cov-report=
+	$(UV) run pytest tests/ranking --cov --cov-append --cov-report=term --cov-fail-under=70
 
 test-integration: ## Run integration tests against Compose services
 	$(COMPOSE) up -d --wait redis postgres mlflow
@@ -88,3 +89,11 @@ build-index: ## Export vectors, benchmark FAISS indexes, and save the chosen ind
 	$(UV) run python -m streamrank.models.export_vectors --model-dir $(RETRIEVAL_MODEL)
 	$(UV) run python -m streamrank.retrieval.benchmark --model-dir $(RETRIEVAL_MODEL) \
 		$(if $(INDEX_CHOICE),--choose "$(INDEX_CHOICE)",)
+
+RANKER_ARGS ?=
+
+train-ranker: ## Export candidates, build ranker features, and train the LambdaMART ranker
+	$(UV) run python -m streamrank.models.candidates --model-dir $(RETRIEVAL_MODEL)
+	$(UV) run python -m streamrank.ranking.build_features
+	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.ranking.train_ranker \
+		--early-stop-split data/split/sample10 $(RANKER_ARGS)

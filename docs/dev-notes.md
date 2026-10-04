@@ -55,6 +55,8 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - PyTorch, FAISS, and LightGBM each bundle their own OpenMP runtime. On macOS any two of them
   in one process abort or hang (`OMP: Error #15`); `KMP_DUPLICATE_LIB_OK` does not help.
   On Linux (CI, containers) they coexist.
-- Keep them in separate processes: `export_vectors` (torch) writes `vectors_val.npz`, and
-  `streamrank.retrieval` (FAISS) never imports torch. FAISS tests live in `tests/faiss/`
-  and `make test` runs them in a second pytest process.
+- Keep them in separate processes: `export_vectors` and `candidates` (torch) write files,
+  `streamrank.retrieval` (FAISS) never imports torch, and the ranker trainer (LightGBM)
+  never imports Feast, because Feast loads torch when it is installed. FAISS and ranker
+  tests live in `tests/faiss/` and `tests/ranking/`; `make test` runs each suite in its own
+  pytest process, and a plain `pytest` runs `tests/unit` only.

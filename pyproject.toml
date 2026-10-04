@@ -9,6 +9,7 @@ requires-python = ">=3.12,<3.13"
 # Core runtime dependencies shared by every component.
 dependencies = [
     "numpy>=2.5.3",
+    "pandera[polars]>=0.33.1",
     "polars>=1.44.2",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
@@ -57,7 +58,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RUF", "PTH", "PL", "NPY", 
 ignore = ["PLR0913", "S311"]  # S311: randomness here is for ML, never for security
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["PLR2004", "NPY002", "S101", "S108"]
+"tests/**" = ["PLR2004", "NPY002", "S101", "S108", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"

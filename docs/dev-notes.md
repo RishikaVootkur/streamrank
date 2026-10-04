@@ -72,3 +72,9 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - `make simulate` replays validation events for 2,000 ranker-evaluation users (Redis db 10) and
   interleaves two systems; results in `artifacts/simulation/`. About 4 minutes per run.
 - `--daily-features` refreshes batch features each simulated day from `data/features/`.
+
+## Observability
+- `make up` also starts Prometheus (9090, scrapes the API every 5 s) and Grafana (3000,
+  anonymous viewer; dashboards provisioned from `deploy/grafana/`).
+- Dashboard "StreamRank serving": latency percentiles, throughput by source, p95 by stage,
+  engine error rate (500s only), p99 against the 50 ms target.

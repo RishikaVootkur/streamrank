@@ -1,9 +1,19 @@
 import math
+from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import polars as pl
 
 from streamrank.features.definitions import SECONDS_PER_DAY
-from streamrank.monitoring.drift import event_features, render, summarize
+from streamrank.monitoring.drift import (
+    CATEGORICAL,
+    NUMERICAL,
+    event_features,
+    render,
+    run_report,
+    summarize,
+)
 
 DAY = SECONDS_PER_DAY
 
@@ -73,3 +83,18 @@ def test_summary_and_markdown() -> None:
     }
     text = render(s)
     assert "| a | Wasserstein distance (normed) | 0.3000 | 0.1 | yes |" in text
+
+
+def test_run_report_uses_distances_on_small_samples(tmp_path: Path) -> None:
+    rng = np.random.default_rng(0)
+    n = 200
+
+    def frame(shift: float) -> pd.DataFrame:
+        data: dict[str, object] = {c: rng.normal(shift, 1.0, n) for c in NUMERICAL}
+        data |= {c: rng.choice(["a", "b"], n) for c in CATEGORICAL}
+        return pd.DataFrame(data)
+
+    summary = run_report(frame(0.0), frame(3.0), tmp_path)
+    methods = {info["method"] for info in summary["columns"].values()}
+    assert methods == {"wasserstein", "jensenshannon"}
+    assert all(summary["columns"][c]["drift"] for c in NUMERICAL)

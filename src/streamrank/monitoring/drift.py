@@ -65,7 +65,10 @@ def run_report(reference: pd.DataFrame, current: pd.DataFrame, out_dir: Path) ->
     definition = DataDefinition(numerical_columns=NUMERICAL, categorical_columns=CATEGORICAL)
     cur = Dataset.from_pandas(current, data_definition=definition)
     ref = Dataset.from_pandas(reference, data_definition=definition)
-    snapshot = Report([DataDriftPreset()]).run(cur, ref)
+    # Distance methods at any sample size: Evidently's small-sample defaults are p-value tests,
+    # where drift means a score below the threshold, so the comparison below would flip.
+    preset = DataDriftPreset(num_method="wasserstein", cat_method="jensenshannon")
+    snapshot = Report([preset]).run(cur, ref)
     out_dir.mkdir(parents=True, exist_ok=True)
     snapshot.save_html(str(out_dir / "drift_report.html"))
     snapshot.save_json(str(out_dir / "drift_report.json"))
@@ -124,15 +127,18 @@ def main(argv: list[str] | None = None) -> None:
     snaps = pl.read_parquet(args.features_dir / "item_features.parquet")
     movies = pl.read_parquet(s.data_dir / "processed" / "movies.parquet")
     ref_win, cur_win = window(t1, WINDOW_DAYS), window(cur_end, WINDOW_DAYS)
-    frames = []
+    frames, totals = [], []
     for start, end in (ref_win, cur_win):
         df = event_features(ratings, snaps, movies, start, end)
+        totals.append(df.height)
+        df = df.sort(df.columns)  # sample by position from a fixed row order
         frames.append(df.sample(min(args.sample, df.height), seed=s.seed).to_pandas())
     summary = run_report(frames[0], frames[1], args.out_dir)
     summary |= {
         "reference": [_iso(ref_win[0]), _iso(ref_win[1])],
         "current": [_iso(cur_win[0]), _iso(cur_win[1])],
         "rows": {"reference": len(frames[0]), "current": len(frames[1])},
+        "events": {"reference": totals[0], "current": totals[1]},
     }
     (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     args.doc.write_text(render(summary))
@@ -147,8 +153,9 @@ def render(summary: dict[str, Any]) -> str:
         "",
         f"Reference: rating events from {summary['reference'][0]} to {summary['reference'][1]} "
         f"(the 90 days before the training cutoff). Current: {summary['current'][0]} to "
-        f"{summary['current'][1]}. {summary['rows']['reference']:,} sampled events per window. "
-        "Evidently `DataDriftPreset` with its default tests for samples above 1,000 rows. "
+        f"{summary['current'][1]}. Sampled events: {summary['rows']['reference']:,} reference, "
+        f"{summary['rows']['current']:,} current. Evidently `DataDriftPreset` with Wasserstein "
+        "distance for numeric columns and Jensen-Shannon distance for categorical ones. "
         "Full report: `make drift` writes "
         "`artifacts/drift/drift_report.html`.",
         "",
@@ -162,6 +169,15 @@ def render(summary: dict[str, Any]) -> str:
         flag = "yes" if info["drift"] else "no"
         score, threshold = f"{info['score']:.4f}", f"{info['threshold']:g}"
         lines.append(f"| {column} | {info['method']} | {score} | {threshold} | {flag} |")
+    events = summary.get("events")
+    if events:
+        lines += [
+            "",
+            f"Event volume: {events['reference']:,} reference and {events['current']:,} current "
+            "events. Item popularity is an absolute 30-day count, so a change in overall volume "
+            "shifts its whole distribution; check volume before reading popularity drift as a "
+            "change in what people watch.",
+        ]
     return "\n".join(lines) + "\n"
 
 

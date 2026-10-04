@@ -203,7 +203,9 @@ kind-up: ## Create the kind cluster, copy Redis state into it, load images, add 
 		-p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 	$(KUBE) -n kube-system rollout status deployment metrics-server --timeout=180s
 	@# Pods of an existing release keep the old image and snapshot until restarted.
-	-$(KUBE) rollout restart deployment/streamrank-api deployment/streamrank-redis 2>/dev/null
+	@if $(KUBE) get deployment streamrank-api >/dev/null 2>&1; then \
+		$(KUBE) rollout restart deployment/streamrank-api deployment/streamrank-redis; \
+	fi
 
 helm-install: ## Install or upgrade the StreamRank chart in the kind cluster
 	helm --kube-context kind-$(KIND_CLUSTER) upgrade --install streamrank deploy/helm/streamrank --wait --timeout 10m
@@ -215,7 +217,7 @@ kind-load: ## Load the API in kind (NodePort 18000) and record HPA scaling
 	docker run -d --name streamrank-k6-kind --network kind \
 		-v $(CURDIR)/loadtest:/scripts:ro -v $(K8S_ARTIFACTS)/k8s:/data \
 		-e BASE_URL=http://$(KIND_CLUSTER)-control-plane:30080 -e RATE=$(LOAD_RATE) \
-		-e DURATION=$(LOAD_DURATION) -e NO_REUSE=1 -e SUMMARY=load_summary_kind.json \
+		-e DURATION=$(LOAD_DURATION) -e NO_REUSE=1 -e SUMMARY=load_summary_kind_$(LOAD_RATE).json \
 		grafana/k6:2.3.0 run -q /scripts/recommend.js
 	while [ "$$(docker inspect -f '{{.State.Running}}' streamrank-k6-kind)" = true ]; do \
 		echo "$$(date +%T) $$($(KUBE) get hpa streamrank-api --no-headers | awk '{print $$4, "replicas=" $$7}')"; \

@@ -37,7 +37,7 @@ export default function () {
   const res = http.get(`${__ENV.BASE_URL}/recommendations/${id}?k=10`);
   check(res, {
     'status 200': (r) => r.status === 200,
-    '10 items': (r) => r.json('items').length === 10,
+    '10 items': (r) => r.status === 200 && r.json('items').length === 10,
   });
 }
 

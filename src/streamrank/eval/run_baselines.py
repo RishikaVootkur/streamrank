@@ -55,16 +55,16 @@ def candidates(seed: int, quick: bool = False) -> list[Candidate]:
         Candidate(
             "item_knn",
             ItemKNN,
-            {"neighbors": (100, 400), "shrink": (10.0, 100.0), "signal": SIGNALS},
+            {"neighbors": (50, 100, 400), "shrink": (10.0, 100.0), "signal": SIGNALS},
         ),
-        Candidate("ease", EASE, {"l2": (100.0, 500.0, 2000.0), "signal": SIGNALS}),
+        Candidate("ease", EASE, {"l2": (500.0, 2000.0, 8000.0), "signal": SIGNALS}),
         Candidate(
             "als",
             lambda **kw: ALS(seed=seed, **kw),
             {
                 "factors": (64, 128),
-                "regularization": (0.01, 0.1),
-                "alpha": (1.0, 10.0),
+                "regularization": (0.1, 1.0),
+                "alpha": (10.0, 40.0),
                 "signal": SIGNALS,
             },
         ),

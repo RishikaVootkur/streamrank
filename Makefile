@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -32,15 +32,16 @@ test: ## Run unit tests with coverage (FAISS and LightGBM tests in their own pro
 	$(UV) run pytest tests/ranking --cov --cov-append --cov-report=term --cov-fail-under=70
 
 test-integration: ## Run integration tests against Compose services
-	$(COMPOSE) up -d --wait redis postgres mlflow
+	$(COMPOSE) --profile streaming up -d --wait redis postgres mlflow redpanda
 	$(UV) run pytest tests/integration -m integration
 	$(UV) run pytest tests/serving -m integration
+	$(UV) run pytest tests/streaming -m integration
 
 up: ## Start the local stack, including the API (needs serving artifacts)
 	$(COMPOSE) --profile serving up -d --wait --build
 
 down: ## Stop the local stack
-	$(COMPOSE) --profile serving --profile load down
+	$(COMPOSE) --profile serving --profile load --profile streaming down
 
 data: ## Download MovieLens 32M and verify its checksum
 	$(UV) run python -m streamrank.data.download
@@ -118,3 +119,11 @@ LOAD_DURATION ?= 2m
 load: ## Load test the API with k6 (constant arrival rate)
 	LOAD_RATE=$(LOAD_RATE) LOAD_DURATION=$(LOAD_DURATION) \
 		$(COMPOSE) --profile serving --profile load run --rm k6
+
+stream: ## Run the streaming session-feature job (Redpanda -> Redis)
+	$(COMPOSE) --profile streaming up -d --wait redis redpanda
+	$(UV) run python -m streamrank.streaming.app
+
+stream-parity: ## Replay 10,000 events and check online session features against batch
+	$(COMPOSE) --profile streaming up -d --wait redis redpanda
+	$(UV) run python -m streamrank.streaming.parity --events 10000

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     mlflow_tracking_uri: str = "http://localhost:5001"
 
+    kafka_broker: str = "localhost:19092"
+
     redis_host: str = "localhost"
     redis_port: int = 6379
 

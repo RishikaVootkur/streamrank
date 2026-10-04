@@ -60,3 +60,10 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
   never imports Feast, because Feast loads torch when it is installed. FAISS and ranker
   tests live in `tests/faiss/` and `tests/ranking/`; `make test` runs each suite in its own
   pytest process, and a plain `pytest` runs `tests/unit` only.
+
+## Streaming
+- `make stream` runs the session job (Redpanda -> Redis); `make stream-parity` replays 10,000
+  events and compares `session:<user>` hashes with the Polars batch computation.
+- Replay order is time then a hash of (user, item); messages are keyed by user.
+- Streaming tests live in `tests/streaming/` and need Compose Redpanda (`--profile streaming`).
+- Quix Streams `Application.run` needs the main thread: run live jobs as subprocesses.

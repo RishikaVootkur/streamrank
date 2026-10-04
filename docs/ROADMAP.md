@@ -12,7 +12,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [ ] M5 FAISS index
 - [ ] M6 LightGBM LambdaMART ranker
 - [ ] M7 Serving API
-- [ ] M8 Streaming session features
+- [x] M8 Streaming session features
 - [ ] M9 Online test simulation
 - [ ] M10 Observability, demo UI, Kubernetes
 - [ ] M11 Final run, docs, release
@@ -48,6 +48,10 @@ Full split, validation partition: 6,463 warm users ranked against all 65,723 cat
 ### Offline features (M3)
 
 `make features` on MovieLens 32M (snapshots from 2019-11-01): Spark in Docker writes 1,279,732 user and 5,552,647 item snapshot rows in 66 s, then Feast loads 288,533 entity keys into Redis (118 s end to end). Spark output equals the reference definitions on every row in parity tests, and 50 random real rows recomputed from raw ratings had 0 mismatches. See [ADR 0004](adr/0004-offline-features-spark.md) and [ADR 0005](adr/0005-feature-store-feast.md).
+
+### Streaming session features (M8)
+
+10,000 replayed MovieLens events after the training cutoff (631 users): online session features in Redis equal the offline batch computation for every user (0 mismatches). Click-to-Redis latency p50 529 ms, p95 540 ms. See [ADR 0010](adr/0010-streaming-session-features.md).
 
 ## Blocked or changed
 

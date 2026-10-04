@@ -113,5 +113,5 @@ show_missing = true
 skip_covered = true
 
 [[tool.mypy.overrides]]
-module = ["implicit.*", "onnxruntime.*", "onnxmltools.*"]
+module = ["implicit.*", "onnxruntime.*", "onnxmltools.*", "confluent_kafka.*"]
 ignore_missing_imports = true

@@ -372,7 +372,7 @@ def run(
                 seed=train_cfg.seed,
             )
             summary[f"recall@100_minus_ease{label}"] = asdict(diff)
-    _save(out_dir, rec, summary, split_dir, es_ids)
+    _save(out_dir, rec, summary, split_dir, setup.train.user_ids[es_targets.user_rows])
     if mlflow.active_run() is not None:
         mlflow.log_params({k: v for k, v in summary["result"]["params"].items()})
         mlflow.log_metrics(_flat_metrics(summary))

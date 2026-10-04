@@ -127,7 +127,9 @@ def training_batch(
         if n < 2:  # noqa: PLR2004 - need one input and one target
             continue
         lo = min(n, max_len + 1)
-        stop = n if rng.random() < recent_prob else int(rng.integers(lo, n + 1))
+        # Draw only when the option is on, so recent_prob = 0 keeps the original random stream.
+        recent = recent_prob > 0 and rng.random() < recent_prob
+        stop = n if recent else int(rng.integers(lo, n + 1))
         start = max(0, stop - max_len - 1)
         base = int(seqs.indptr[user])
         window = slice(base + start, base + stop)

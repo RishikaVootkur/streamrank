@@ -4,7 +4,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 
 ## Milestones
 
-- [ ] M0 Scaffold, CI, guards
+- [x] M0 Scaffold, CI, guards
 - [ ] M1 Data ingest, validation, temporal split, synthetic generator
 - [ ] M2 Evaluation library and baselines
 - [ ] M3 PySpark offline features and Feast

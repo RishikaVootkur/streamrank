@@ -35,6 +35,8 @@ class Aggregate:
     def __post_init__(self) -> None:
         if (self.kind == "count") != (self.column is None):
             raise ValueError(f"{self.name}: count takes no column; other kinds need one")
+        if self.window_days is not None and self.window_days < 1:
+            raise ValueError(f"{self.name}: window_days must be at least 1")
 
 
 @dataclass(frozen=True)
@@ -107,12 +109,24 @@ def day_of(ts: int) -> int:
     return ts // SECONDS_PER_DAY
 
 
-def snapshot_days(active_days: Iterable[int], windows: Sequence[int]) -> list[int]:
-    """Days on which an entity gets a snapshot: after each active day and at each expiry."""
+def snapshot_days(
+    active_days: Iterable[int], windows: Sequence[int], from_day: int | None = None
+) -> list[int]:
+    """Days on which an entity gets a snapshot: after each active day and at each expiry.
+
+    With `from_day`, earlier snapshot days are dropped and an entity active before
+    `from_day` gets a boundary snapshot on `from_day`, so lookups from that day on still
+    find a row holding its full history.
+    """
+    days = list(active_days)
     out: set[int] = set()
-    for d in active_days:
+    for d in days:
         out.add(d + 1)
         out.update(d + 1 + w for w in windows)
+    if from_day is not None:
+        out = {d for d in out if d >= from_day}
+        if any(d < from_day for d in days):
+            out.add(from_day)
     return sorted(out)
 
 
@@ -156,7 +170,7 @@ def reference_snapshots(
     """Every snapshot row for every entity, computed directly from the definitions.
 
     Quadratic in events per entity: meant for tests and small data, not production.
-    Rows before `from_day` are dropped (their aggregates still use all history).
+    With `from_day`, rows start there (see `snapshot_days`); aggregates use all history.
     """
     by_key: dict[int, list[Event]] = {}
     for e in events:
@@ -164,8 +178,6 @@ def reference_snapshots(
     rows: list[dict[str, float | int | None]] = []
     for key in sorted(by_key):
         evs = by_key[key]
-        for day in snapshot_days({day_of(e.ts) for e in evs}, fs.windows):
-            if from_day is not None and day < from_day:
-                continue
+        for day in snapshot_days({day_of(e.ts) for e in evs}, fs.windows, from_day):
             rows.append({fs.key: key, "snapshot_day": day, **snapshot(fs, evs, day)})
     return rows

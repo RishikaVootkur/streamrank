@@ -88,6 +88,31 @@ def test_reference_from_day_keeps_full_history() -> None:
     assert last["user_n_ratings"] == 4
 
 
+@pytest.mark.parametrize("from_day", [101, 120, 140, 150, 200])
+def test_from_day_boundary_rows_answer_lookups(from_day: int) -> None:
+    rows = reference_snapshots(USER_FEATURES, EVENTS, from_day=from_day)
+    for user in (1, 2):
+        evs = [e for e in EVENTS if e.user_id == user]
+        for day in range(from_day, from_day + 40):
+            seen = [r for r in rows if r["user_id"] == user and r["snapshot_day"] <= day]
+            if not any(day_of(e.ts) < day for e in evs):
+                assert not seen
+                continue
+            latest = max(seen, key=lambda r: r["snapshot_day"])
+            expected = snapshot(USER_FEATURES, evs, day)
+            assert {k: latest[k] for k in expected} == expected, (user, day)
+
+
+def test_snapshot_days_with_from_day() -> None:
+    assert snapshot_days([100, 105], [7], from_day=107) == [107, 108, 113]
+    assert snapshot_days([110], [7], from_day=107) == [111, 118]
+
+
+def test_window_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="window_days"):
+        Aggregate("bad", "count", window_days=0)
+
+
 def test_names_are_unique_and_prefixed() -> None:
     for fs in (USER_FEATURES, ITEM_FEATURES):
         assert len(set(fs.names)) == len(fs.names)

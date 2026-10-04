@@ -49,6 +49,7 @@ class Artifacts:
     user_tower: ort.InferenceSession
     ranker: ort.InferenceSession
     index: Any
+    item_vectors: FloatArray
     item_ids: IntArray
     titles: npt.NDArray[np.object_]
     year: npt.NDArray[np.float64]
@@ -71,6 +72,7 @@ class Artifacts:
             user_tower=_session(root / "user_tower.onnx"),
             ranker=_session(root / "ranker.onnx"),
             index=index,
+            item_vectors=np.load(root / "item_vectors.npy"),
             item_ids=items["item_ids"],
             titles=items["titles"],
             year=items["year"],
@@ -108,14 +110,24 @@ def left_pad(state: UserState, max_len: int) -> dict[str, IntArray]:
 
 
 def retrieve(
-    index: Any, user: FloatArray, seen: IntArray, n_items: int, k: int = CANDIDATES
+    index: Any, item_vectors: FloatArray, user: FloatArray, seen: IntArray, k: int = CANDIDATES
 ) -> tuple[IntArray, FloatArray]:
-    """Top-k unseen catalog rows and scores, fetching k + |seen| (capped) from the index."""
+    """Top-k unseen catalog rows with exact scores, best first.
+
+    The index proposes candidates (fetching k + |seen|, capped); they are re-scored exactly
+    with the item vectors, so the retrieval score matches the offline candidates whatever
+    the index type. When the capped fetch leaves fewer than k unseen items (very heavy
+    users), all items are scored exactly instead.
+    """
+    n_items = item_vectors.shape[0]
     fetch = int(min(n_items, k + seen.size, max(MAX_FETCH, k)))
-    scores, rows = index.search(np.ascontiguousarray(user, dtype=np.float32), fetch)
-    rows, scores = rows[0], scores[0]
-    keep = (rows >= 0) & ~np.isin(rows, seen, assume_unique=False)
-    return rows[keep][:k].astype(np.int64), scores[keep][:k].astype(np.float32)
+    _, found = index.search(np.ascontiguousarray(user, dtype=np.float32), fetch)
+    rows = found[0][(found[0] >= 0) & ~np.isin(found[0], seen)]
+    if rows.size < min(k, n_items - np.unique(seen).size):
+        rows = np.setdiff1d(np.arange(n_items), seen, assume_unique=False)
+    exact = item_vectors[rows] @ user[0]
+    order = np.argsort(-exact, kind="stable")[:k]
+    return rows[order].astype(np.int64), exact[order].astype(np.float32)
 
 
 class Engine:
@@ -170,8 +182,13 @@ class Engine:
             return result
         user_vec = self.art.user_tower.run(None, left_pad(state, self.art.max_len))[0]
         lap("user_tower")
-        rows, scores = retrieve(self.art.index, user_vec, state.seen, self.art.item_ids.size)
+        rows, scores = retrieve(self.art.index, self.art.item_vectors, user_vec, state.seen)
         lap("retrieval")
+        if rows.size == 0:  # the user has seen the whole catalog
+            unseen = self.art.fallback[~np.isin(self.art.fallback, state.seen)][:k]
+            result = self._result(unseen, np.zeros(unseen.size, dtype=np.float32), "popular")
+            result.timings_ms = timings
+            return result
         stats = self.user_features(user_id)
         lap("user_features")
         feats = request_features(

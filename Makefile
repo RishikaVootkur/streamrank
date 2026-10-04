@@ -74,7 +74,8 @@ features-offline: spark-image ## Compute offline feature snapshots with Spark in
 features: features-offline ## Compute features, register them in Feast, and load Redis
 	$(COMPOSE) up -d --wait redis
 	cd feature_repo && $(UV) run feast apply
-	$(UV) run python -m streamrank.features.store --start $(FEATURES_FROM)
+	$(UV) run python -m streamrank.features.store --start $(FEATURES_FROM) \
+		--end-at-cutoff data/split/full
 
 RETRIEVAL_ARGS ?=
 
@@ -106,7 +107,7 @@ export-onnx: ## Export the trained user tower to ONNX and check parity with PyTo
 
 serving-artifacts: ## Collect serving artifacts and load user state into Redis
 	$(COMPOSE) up -d --wait redis
-	$(UV) run python -m streamrank.serving.build
+	$(UV) run python -m streamrank.serving.build --model-dir $(RETRIEVAL_MODEL)
 
 smoke: ## End-to-end request against the running stack
 	$(UV) run python -m streamrank.serving.smoke

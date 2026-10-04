@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import numpy as np
 import polars as pl
 import redis
 from fastapi import FastAPI, HTTPException, Query, Response
@@ -75,6 +76,17 @@ def load_item_table(store: Any, art: Artifacts, batch: int = 10_000) -> ItemTabl
     return ItemTable.build(art.item_ids, stats, art.year, art.genres, art.has_movie)
 
 
+def check_clock(items: ItemTable, now_ts: int) -> None:
+    """Refuse to serve statistics from after the serving clock (they would leak the future
+    and produce values the ranker never saw in training)."""
+    latest = float(np.nanmax(items.stats["item_last_ts"]))
+    if latest >= now_ts:
+        raise RuntimeError(
+            f"online item statistics include events at {latest:.0f}, at or after the serving "
+            f"clock {now_ts}; materialize the online store with --end-at-cutoff"
+        )
+
+
 def user_feature_fn(store: Any) -> Any:
     refs = [f"user_stats:{c}" for c in USER_STATS]
 
@@ -115,6 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     client = redis.Redis(host=settings.redis_host, port=settings.redis_port)
     store = _feast_store()
     items = await anyio.to_thread.run_sync(load_item_table, store, art)
+    check_clock(items, art.cutoff_ts)
     engine = Engine(art, client, user_feature_fn(store), items)
     warm = int(art.profile_users[0]) if art.profile_users.size else 1
     await anyio.to_thread.run_sync(engine.recommend, warm, 10)

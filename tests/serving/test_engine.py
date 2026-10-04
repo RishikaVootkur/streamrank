@@ -31,15 +31,35 @@ def test_left_pad_matches_training_layout(serving_dir: Path, client: redis.Redis
     assert padded["positive"].tolist() == [[0, 0, 0, 1, 1, 0]]
 
 
-def test_retrieve_skips_seen_items() -> None:
+def test_retrieve_skips_seen_items_and_scores_exactly() -> None:
     from streamrank.retrieval.index import IndexSpec, build  # noqa: PLC0415
 
-    vecs = np.eye(4, dtype=np.float32)
-    rows, scores = retrieve(
-        build(vecs, IndexSpec("flat")).index, vecs[[0]], np.array([0, 2]), 4, k=3
-    )
-    assert rows.tolist()[0] not in (0, 2) and set(rows.tolist()) <= {1, 3}
-    assert np.all(np.diff(scores) <= 0)
+    rng = np.random.default_rng(3)
+    vecs = rng.normal(size=(30, 4)).astype(np.float32)
+    user = rng.normal(size=(1, 4)).astype(np.float32)
+    seen = np.array([0, 2, 5])
+    index = build(vecs, IndexSpec("flat")).index
+    rows, scores = retrieve(index, vecs, user, seen, k=10)
+    expected = np.setdiff1d(np.arange(30), seen)
+    expected = expected[np.argsort(-(vecs[expected] @ user[0]))][:10]
+    assert rows.tolist() == expected.tolist()
+    np.testing.assert_allclose(scores, vecs[rows] @ user[0], rtol=1e-6)
+
+
+def test_retrieve_scans_everything_for_heavy_users(monkeypatch: pytest.MonkeyPatch) -> None:
+    from streamrank.retrieval.index import IndexSpec, build  # noqa: PLC0415
+    from streamrank.serving import engine  # noqa: PLC0415
+
+    monkeypatch.setattr(engine, "MAX_FETCH", 5)  # a tiny cap: the fetch sees only seen items
+    rng = np.random.default_rng(4)
+    vecs = rng.normal(size=(40, 4)).astype(np.float32)
+    user = vecs[[7]] * 3
+    nearest = np.argsort(-(vecs @ user[0]))
+    seen = nearest[:20]
+    rows, _ = retrieve(build(vecs, IndexSpec("flat")).index, vecs, user, seen, k=10)
+    assert rows.size == 10 and not set(rows.tolist()) & set(seen.tolist())
+    rows, _ = retrieve(build(vecs, IndexSpec("flat")).index, vecs, user, np.arange(40), k=10)
+    assert rows.size == 0
 
 
 def test_engine_personalized_and_fallback(serving_dir: Path, client: redis.Redis) -> None:
@@ -53,6 +73,16 @@ def test_engine_personalized_and_fallback(serving_dir: Path, client: redis.Redis
     assert {"state", "user_tower", "retrieval", "user_features", "ranking"} <= set(rec.timings_ms)
     unknown = engine.recommend(999, k=5)
     assert unknown.source == "popular" and unknown.item_ids == [21, 22, 23, 24, 25]
+
+
+def test_clock_guard_rejects_future_statistics(serving_dir: Path) -> None:
+    from streamrank.serving.app import check_clock  # noqa: PLC0415
+
+    art = Artifacts.load(serving_dir)
+    items = _items(art)
+    check_clock(items, now_ts=1000)  # last_ts is 1.0 everywhere
+    with pytest.raises(RuntimeError, match="serving clock"):
+        check_clock(items, now_ts=1)
 
 
 class _FakeResponse:

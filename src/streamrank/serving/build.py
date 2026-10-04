@@ -65,6 +65,7 @@ def run(
     out_dir: Path,
     *,
     onnx: Path,
+    model_dir: Path,
     index_dir: Path,
     ranker_dir: Path,
     client: redis.Redis,
@@ -84,6 +85,10 @@ def run(
     fallback = np.argsort(-pop.score(np.zeros(1, dtype=np.int64))[0], kind="stable")
     np.save(out_dir / "fallback.npy", fallback[:FALLBACK_SIZE].astype(np.int64))
     shutil.copy(onnx, out_dir / "user_tower.onnx")
+    vectors = np.load(model_dir / "item_vectors.npy")
+    if vectors.shape[0] != train.n_items:
+        raise ValueError("item vectors were trained on a different catalog")
+    np.save(out_dir / "item_vectors.npy", vectors.astype(np.float32))
     shutil.copy(index_dir / "items.faiss", out_dir / "items.faiss")
     shutil.copy(index_dir / "items.json", out_dir / "items.json")
     if not np.array_equal(np.load(index_dir / "item_ids.npy"), train.item_ids):
@@ -138,6 +143,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--split-dir", type=Path, default=s.data_dir / "split" / "full")
     p.add_argument("--out-dir", type=Path, default=a / "serving")
     p.add_argument("--onnx", type=Path, default=a / "onnx" / "user_tower.onnx")
+    p.add_argument("--model-dir", type=Path, default=a / "retrieval" / "two_tower_full")
     p.add_argument("--index-dir", type=Path, default=a / "index")
     p.add_argument("--ranker-dir", type=Path, default=a / "ranker")
     p.add_argument("--max-len", type=int, default=200)
@@ -148,6 +154,7 @@ def main(argv: list[str] | None = None) -> None:
             args.split_dir,
             args.out_dir,
             onnx=args.onnx,
+            model_dir=args.model_dir,
             index_dir=args.index_dir,
             ranker_dir=args.ranker_dir,
             client=client,

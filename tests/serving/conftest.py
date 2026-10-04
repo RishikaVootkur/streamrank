@@ -75,6 +75,7 @@ def serving_dir(tmp_path: Path, client: redis.Redis) -> Path:
     w[FEATURES.index("retrieval_score")] = 1.0  # ranker keeps retrieval order
     _ranker(w, root / "ranker.onnx")
     save(build(item_vecs, IndexSpec("flat")), root / "items.faiss")
+    np.save(root / "item_vectors.npy", item_vecs)
     item_ids = np.arange(1, N_ITEMS + 1)
     genres = (rng.random((N_ITEMS, len(GENRES))) < 0.2).astype(np.float32)
     np.savez(

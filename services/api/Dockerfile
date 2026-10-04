@@ -24,7 +24,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
-    SERVING_DIR=/artifacts/serving
+    SERVING_DIR=/artifacts/serving \
+    FEATURE_REPO=/app/feature_repo
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "streamrank.serving.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log"]

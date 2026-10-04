@@ -16,6 +16,19 @@ FROM base AS deps
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group spark --no-install-project
+# Trim jars this job never loads (Hive's Derby metastore, the Spark Connect REPL) and
+# replace the bundled netty-handler with the patched release (CVE-2026-75595).
+ARG NETTY_VERSION=4.2.17.Final
+ARG NETTY_SHA1=ed53dae90d09306b42bc886fa292510abdf5c5dc
+RUN set -eu; \
+    jars=/opt/venv/lib/python3.12/site-packages/pyspark/jars; \
+    rm -rf "$jars/connect-repl" "$jars"/derby*.jar "$jars"/netty-handler-4.*.Final.jar; \
+    python3 -c "import hashlib, sys, urllib.request; \
+data = urllib.request.urlopen(sys.argv[1]).read(); \
+assert hashlib.sha1(data).hexdigest() == sys.argv[2], 'checksum mismatch'; \
+open(sys.argv[3], 'wb').write(data)" \
+    "https://repo1.maven.org/maven2/io/netty/netty-handler/${NETTY_VERSION}/netty-handler-${NETTY_VERSION}.jar" \
+    "$NETTY_SHA1" "$jars/netty-handler-${NETTY_VERSION}.jar"
 
 FROM deps AS test
 RUN --mount=type=cache,target=/root/.cache/uv \

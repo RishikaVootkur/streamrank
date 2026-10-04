@@ -235,14 +235,27 @@ class SessionState:
     events: list[tuple[int, int, float]]  # (ts, item_id, rating) inside the window
 
     def update(self, event: Event) -> dict[str, float]:
+        if self.events and (
+            event.ts < self.events[-1][0]
+            or (event.ts, event.item_id) in {e[:2] for e in self.events}
+        ):
+            # A redelivered or out-of-order event: keep the session as it is.
+            return self.features()
         self.events.append((event.ts, event.item_id, event.rating))
         cutoff = event.ts - SESSION_WINDOW_SECONDS
         self.events = [e for e in self.events if e[0] > cutoff]
+        return self.features()
+
+    def features(self) -> dict[str, float]:
+        """Features as of the latest stored event."""
+        if not self.events:
+            return session_snapshot([], 0)
         ratings = [r for _, _, r in self.events]
+        last_ts, last_item, _ = self.events[-1]
         return {
             "session_n_events": float(len(self.events)),
             "session_n_positive": float(sum(r >= POSITIVE_RATING for r in ratings)),
             "session_mean_rating": sum(ratings) / len(ratings),
-            "session_last_item_id": float(event.item_id),
-            "session_last_ts": float(event.ts),
+            "session_last_item_id": float(last_item),
+            "session_last_ts": float(last_ts),
         }

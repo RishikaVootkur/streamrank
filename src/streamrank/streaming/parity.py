@@ -81,9 +81,9 @@ def measure_latency(
         start = time.perf_counter()
         produce(pl.DataFrame([probe]), broker, topic)
         key = session_key(probe["user_id"])
-        while time.perf_counter() - start < PROBE_TIMEOUT_S:
-            if client.hget(key, "session_last_ts") is not None:
-                break
+        while client.hget(key, "session_last_ts") is None:
+            if time.perf_counter() - start > PROBE_TIMEOUT_S:
+                raise TimeoutError(f"probe for user {probe['user_id']} never reached Redis")
             time.sleep(0.01)
         times.append((time.perf_counter() - start) * 1000)
     return {

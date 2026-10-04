@@ -20,6 +20,12 @@ log = logging.getLogger(__name__)
 def produce(log_df: pl.DataFrame, broker: str, topic: str = TOPIC, rate: float = 0.0) -> int:
     """Send events keyed by user (one partition per user keeps order); `rate` events/s, 0 = max."""
     producer = Producer({"bootstrap.servers": broker, "linger.ms": 5, "enable.idempotence": True})
+    errors: list[str] = []
+
+    def on_delivery(err: object, _msg: object) -> None:
+        if err is not None:
+            errors.append(str(err))
+
     start = time.perf_counter()
     for n, row in enumerate(log_df.iter_rows(named=True), start=1):
         producer.produce(
@@ -27,6 +33,7 @@ def produce(log_df: pl.DataFrame, broker: str, topic: str = TOPIC, rate: float =
             key=str(row["user_id"]),
             value=json.dumps(row).encode(),
             timestamp=int(row["ts"]) * 1000,
+            on_delivery=on_delivery,
         )
         if n % 10_000 == 0:
             producer.poll(0)
@@ -34,7 +41,10 @@ def produce(log_df: pl.DataFrame, broker: str, topic: str = TOPIC, rate: float =
             lag = n / rate - (time.perf_counter() - start)
             if lag > 0:
                 time.sleep(lag)
-    producer.flush(30)
+    if producer.flush(30) > 0:
+        raise RuntimeError("some events were not delivered within 30 s")
+    if errors:
+        raise RuntimeError(f"{len(errors)} events failed to deliver, first: {errors[0]}")
     return log_df.height
 
 

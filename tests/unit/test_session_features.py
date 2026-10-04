@@ -64,3 +64,13 @@ def test_replay_log_order_is_time_then_hash() -> None:
     log = replay_log(df, start_ts=4)
     assert log["ts"].to_list() == [5, 5, 9]
     assert sorted(log.head(2)["user_id"].to_list()) == [1, 2]
+
+
+def test_session_state_skips_redelivered_and_late_events() -> None:
+    state = SessionState(events=[])
+    first = state.update(Event(1, 10, 5.0, 100))
+    second = state.update(Event(1, 11, 3.0, 200))
+    assert state.update(Event(1, 10, 5.0, 100)) == second  # redelivered
+    assert state.update(Event(1, 12, 4.0, 150)) == second  # older than the newest event
+    assert state.update(Event(1, 11, 3.0, 200)) == second  # same event again
+    assert first["session_n_events"] == 1.0 and second["session_n_events"] == 2.0

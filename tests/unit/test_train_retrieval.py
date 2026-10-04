@@ -125,6 +125,8 @@ def test_run_writes_artifacts(
         == (summary["result"]["n_users"])
     )
     assert np.load(out / "item_vectors.npy").shape[1] == SMALL.dim
+    early = np.load(out / "early_stop_users.npy")
+    assert early.size == summary["n_early_stop_users"]
 
 
 def test_load_recommender_restores_scores(

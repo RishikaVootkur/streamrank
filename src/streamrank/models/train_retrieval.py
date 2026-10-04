@@ -63,6 +63,7 @@ class TrainConfig:
     warmup_steps: int = 200
     grad_clip: float = 1.0
     patience: int = 2
+    recent_window_prob: float = 0.0  # share of training windows ending at the latest event
     time_limit_minutes: float = 85.0
     seed: int = 42
 
@@ -179,7 +180,13 @@ class TwoTowerRecommender:
         self.model.train()
         losses = []
         for batch_users in np.array_split(rng.permutation(users), n_batches):
-            batch = training_batch(self._seqs, batch_users, self.model_cfg.max_len, rng)
+            batch = training_batch(
+                self._seqs,
+                batch_users,
+                self.model_cfg.max_len,
+                rng,
+                recent_prob=self.train_cfg.recent_window_prob,
+            )
             if not batch.target_mask.any():
                 continue
             loss = self.model.loss(to_device(batch, self.device), generator=gen)
@@ -365,7 +372,7 @@ def run(
                 seed=train_cfg.seed,
             )
             summary[f"recall@100_minus_ease{label}"] = asdict(diff)
-    _save(out_dir, rec, summary, split_dir)
+    _save(out_dir, rec, summary, split_dir, setup.train.user_ids[es_targets.user_rows])
     if mlflow.active_run() is not None:
         mlflow.log_params({k: v for k, v in summary["result"]["params"].items()})
         mlflow.log_metrics(_flat_metrics(summary))
@@ -409,12 +416,20 @@ def _flat_metrics(summary: dict[str, Any]) -> dict[str, float]:
     return out
 
 
-def _save(out_dir: Path, rec: TwoTowerRecommender, summary: dict[str, Any], split: Path) -> None:
+def _save(
+    out_dir: Path,
+    rec: TwoTowerRecommender,
+    summary: dict[str, Any],
+    split: Path,
+    early_stop_ids: IntArray,
+) -> None:
     if rec.model is None or rec.content is None:
         raise RuntimeError("model not trained")
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
     torch.save(rec.model.state_dict(), out_dir / "model.pt")
     np.save(out_dir / "item_vectors.npy", rec.item_vectors().cpu().numpy())
+    # Users whose validation labels selected the epoch: later stages must not evaluate on them.
+    np.save(out_dir / "early_stop_users.npy", np.asarray(early_stop_ids, dtype=np.int64))
     write_manifest(
         out_dir,
         stage="train_retrieval",
@@ -425,7 +440,12 @@ def _save(out_dir: Path, rec: TwoTowerRecommender, summary: dict[str, Any], spli
         },
         data_hash=str(verify_outputs(split)["data_hash"]),
         seed=rec.train_cfg.seed,
-        outputs=[out_dir / "summary.json", out_dir / "model.pt", out_dir / "item_vectors.npy"],
+        outputs=[
+            out_dir / "summary.json",
+            out_dir / "model.pt",
+            out_dir / "item_vectors.npy",
+            out_dir / "early_stop_users.npy",
+        ],
     )
 
 

@@ -16,7 +16,7 @@ from typing import Any
 
 from streamrank.common.config import get_settings
 from streamrank.common.logging import configure_logging
-from streamrank.common.provenance import begin_stage, read_manifest, write_manifest
+from streamrank.common.provenance import begin_stage, verify_outputs, write_manifest
 from streamrank.common.seeds import set_global_seed
 from streamrank.eval.dataset import EvalSetup, load_setup
 from streamrank.eval.evaluate import EvalResult, Model, fit_and_evaluate
@@ -78,6 +78,8 @@ def tune(
     cands: list[Candidate], setup: EvalSetup, n_resamples: int, seed: int
 ) -> dict[str, dict[str, Any]]:
     """Evaluate every grid point and keep the best per family by the selection metric."""
+    if setup.partition != "val":
+        raise ValueError("tuning must use the validation partition")
     out: dict[str, dict[str, Any]] = {}
     for cand in cands:
         trials: list[dict[str, Any]] = []
@@ -160,6 +162,22 @@ def render_markdown(rows: list[dict[str, Any]], context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def check_compatible(tune_dir: Path, eval_dir: Path) -> dict[str, Any]:
+    """Verify both splits and confirm they come from the same data and cut points.
+
+    Returns a description of the inputs (paths and file hashes) for the manifest.
+    """
+    tune_m, eval_m = verify_outputs(tune_dir), verify_outputs(eval_dir)
+    for key in ("data_hash", "t1", "t2"):
+        if tune_m.get(key) != eval_m.get(key):
+            raise ValueError(f"tuning and evaluation splits differ in {key}")
+    return {
+        "data_hash": eval_m["data_hash"],
+        "tune_split": {"path": str(tune_dir), "outputs": tune_m["outputs"]},
+        "eval_split": {"path": str(eval_dir), "outputs": eval_m["outputs"]},
+    }
+
+
 def run(
     tune_dir: Path,
     eval_dir: Path,
@@ -171,12 +189,17 @@ def run(
     quick: bool = False,
     doc: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Tune on `tune_dir`, evaluate on `eval_dir`, and write results to `out_dir`."""
+    """Tune on `tune_dir`, evaluate on `eval_dir`, and write results to `out_dir`.
+
+    Tuning always uses the validation partition, so test data never influences the chosen
+    settings; `partition` only picks where the tuned models are evaluated.
+    """
     set_global_seed(seed)
+    inputs = check_compatible(tune_dir, eval_dir)
     begin_stage(out_dir)
     cands = candidates(seed, quick)
     t0 = time.perf_counter()
-    tuning = tune(cands, load_setup(tune_dir, partition), n_resamples, seed)
+    tuning = tune(cands, load_setup(tune_dir, "val"), n_resamples, seed)
     (out_dir / "tuning.json").write_text(json.dumps(tuning, indent=2) + "\n")
 
     setup = load_setup(eval_dir, partition)
@@ -203,7 +226,7 @@ def run(
             "selection_metric": SELECTION_METRIC,
             "grids": {c.name: {k: list(v) for k, v in c.grid.items()} for c in cands},
         },
-        data_hash=str(read_manifest(eval_dir)["data_hash"]),
+        data_hash=str(inputs["data_hash"]),
         seed=seed,
         outputs=[out_dir / "tuning.json", out_dir / "results.json"],
         extra={"context": context},

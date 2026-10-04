@@ -2,7 +2,7 @@
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -49,3 +49,18 @@ baselines: ## Tune baselines on the 10% sample and evaluate them on the full val
 	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.run_baselines --doc docs/baselines.md
 
 evaluate: baselines ## Run every offline evaluation
+
+SPARK_IMAGE ?= streamrank-spark:local
+FEATURES_FROM ?= 2019-11-01
+
+spark-image: ## Build the Spark job image
+	docker build -f services/spark/Dockerfile --target runtime -t $(SPARK_IMAGE) .
+
+test-spark: ## Run the Spark parity tests inside the Spark image
+	docker build -f services/spark/Dockerfile --target test -t $(SPARK_IMAGE)-test .
+	docker run --rm $(SPARK_IMAGE)-test
+
+features: spark-image ## Compute offline feature snapshots with Spark in Docker
+	docker run --rm -e HADOOP_USER_NAME=spark -e GIT_SHA=$$(git rev-parse HEAD) \
+		-v $(CURDIR)/data:/app/data $(SPARK_IMAGE) \
+		--processed-dir data/processed --out-dir data/features --from-date $(FEATURES_FROM)

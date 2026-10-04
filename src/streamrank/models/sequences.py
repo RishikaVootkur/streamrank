@@ -31,6 +31,7 @@ class Sequences:
     tokens: IntArray  # item index + 1
     positive: BoolArray  # rating >= 4
     gaps: IntArray  # bucket of seconds since the user's previous event (1 for the first)
+    ts: IntArray  # Unix seconds of each event
 
     @property
     def n_users(self) -> int:
@@ -86,7 +87,7 @@ def build_sequences(train: TrainData) -> Sequences:
     first[indptr[:-1][np.diff(indptr) > 0]] = True
     prev = np.concatenate(([0], times[:-1]))
     gaps = np.where(first, 1, gap_bucket(times - prev))
-    return Sequences(indptr=indptr, tokens=cols + 1, positive=positive, gaps=gaps)
+    return Sequences(indptr=indptr, tokens=cols + 1, positive=positive, gaps=gaps, ts=times)
 
 
 @dataclass(frozen=True)

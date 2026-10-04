@@ -29,6 +29,27 @@ services:
       timeout: 3s
       retries: 10
 
+  mlflow:
+    build:
+      context: .
+      dockerfile: services/mlflow/Dockerfile
+    image: streamrank-mlflow:local
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "${MLFLOW_PORT:-5001}:5000"
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
 volumes:
   redis-data:
   postgres-data:
+  mlflow-artifacts:

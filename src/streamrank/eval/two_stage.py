@@ -73,6 +73,8 @@ def compare(ranker_dir: Path, features_path: Path, split_dir: Path, seed: int) -
     ours = ranked_metrics(pl.read_parquet(features_path), booster, users)
     ease = ease_metrics(split_dir, users)
     both = ours.join(ease, on="user_id", suffix="_ease")
+    if both.height != users.size:
+        raise ValueError(f"expected {users.size} users on both sides, got {both.height}")
     out: dict[str, Any] = {"users": both.height}
     for m in ("ndcg@10", "recall@10"):
         a, b = both[m].to_numpy(), both[f"{m}_ease"].to_numpy()

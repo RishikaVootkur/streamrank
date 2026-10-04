@@ -74,7 +74,7 @@ HNSW (M = 16, efSearch = 400) over 65,723 item vectors: recall@200 against exact
 
 ### LambdaMART ranker (M6)
 
-On 2,908 held-out validation users (never used to train or tune the ranker or the retrieval model): NDCG@10 rises from 0.1155 [0.1088, 0.1222] in retrieval order to 0.1504 [0.1435, 0.1576], a lift of **+0.0349 [+0.0298, +0.0401]**. Against EASE on the same users the two-stage system is level: NDCG@10 difference +0.0033 [-0.0044, +0.0108]. Top features by mean |SHAP|: retrieval rank, 30-day item popularity, genre affinity ([plot](ranker-shap.png), [ADR 0008](adr/0008-lambdamart-ranker.md)).
+On 2,908 held-out validation users (their validation labels were never used to train or tune the ranker or the retrieval model): NDCG@10 rises from 0.1155 [0.1088, 0.1222] in retrieval order to 0.1504 [0.1435, 0.1576], a lift of **+0.0349 [+0.0298, +0.0401]**. Against EASE on the same users the two-stage system is level: NDCG@10 difference +0.0033 [-0.0044, +0.0108]. Top features by mean |SHAP|: retrieval rank, 30-day item popularity, genre affinity ([plot](ranker-shap.png), [ADR 0008](adr/0008-lambdamart-ranker.md)).
 
 ## Blocked or changed
 

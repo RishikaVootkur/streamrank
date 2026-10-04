@@ -35,7 +35,7 @@ Option 3 with LightGBM.
 | LambdaMART | 0.1504 [0.1435, 0.1576] |
 | Lift (paired) | **+0.0349 [+0.0298, +0.0401]** |
 
-The full two-stage system against EASE on the same users (paired): NDCG@10 0.1504 against 0.1471, difference +0.0033 [-0.0044, +0.0108]; Recall@10 0.1492 against 0.1454, difference +0.0038 [-0.0049, +0.0120]. The ranker closes the gap the retrieval stage leaves (ADR 0006); the system is level with the strongest baseline at the top of the list while adding real-time updates, cold-start handling, and millisecond serving.
+The full two-stage system against EASE on the same users (paired): NDCG@10 0.1504 against 0.1471, difference +0.0033 [-0.0044, +0.0108]; Recall@10 0.1492 against 0.1454, difference +0.0038 [-0.0049, +0.0120]. The ranker closes the top-10 gap the retrieval stage leaves (ADR 0006 reports a Recall@100 gap; here NDCG@10 and Recall@10 are level), so at the top of the list the two-stage system matches the strongest baseline while being servable from a nearest-neighbor index.
 
 Top features by mean |SHAP| (`docs/ranker-shap.png`): retrieval rank (0.242), 30-day item popularity (0.233), genre affinity (0.168), 7-day item popularity (0.134), item mean rating (0.114), year gap (0.100), days since the user's last activity (0.072). Recent popularity matters as much as the retrieval signal, consistent with the temporal drift seen in the baselines (recent popularity beats all-time popularity by 0.09 Recall@100).
 

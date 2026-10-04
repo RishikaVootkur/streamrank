@@ -83,8 +83,8 @@ Team-draft interleaving over replayed validation events, 2,000 held-out users, 2
 
 | A | B | Preference for B [95% CI] | Winner |
 | --- | --- | ---: | --- |
-| Retrieval order | Retrieval + ranker (features frozen at cutoff) | +0.018 [-0.028, +0.066] | tie |
-| Retrieval order | Retrieval + ranker (features refreshed daily) | -0.027 [-0.074, +0.024] | tie |
+| Retrieval order | Retrieval + ranker (features frozen at cutoff) | +0.018 [-0.030, +0.065] | tie |
+| Retrieval order | Retrieval + ranker (features refreshed daily) | -0.027 [-0.072, +0.020] | tie |
 | Recent popularity | Retrieval order | **+0.371 [+0.324, +0.420]** | retrieval |
 
 The ranker's offline NDCG lift does not carry over to next-event replay; the sanity pair shows the test can detect a real difference.

@@ -30,13 +30,13 @@ Option 2, as a replay simulator (`make simulate`).
 
 | A | B | Batch features | Users with clicks | Clicks A / B | Preference for B [95% CI] | Winner |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| Retrieval | Retrieval + ranker | Frozen at cutoff | 1,140 | 1,343 / 1,191 | +0.018 [-0.028, +0.066] | tie |
-| Retrieval | Retrieval + ranker | Refreshed daily | 1,109 | 1,368 / 1,121 | -0.027 [-0.074, +0.024] | tie |
+| Retrieval | Retrieval + ranker | Frozen at cutoff | 1,140 | 1,343 / 1,191 | +0.018 [-0.030, +0.065] | tie |
+| Retrieval | Retrieval + ranker | Refreshed daily | 1,109 | 1,368 / 1,121 | -0.027 [-0.072, +0.020] | tie |
 | Recent popularity | Retrieval | Frozen at cutoff | 1,025 | 650 / 1,518 | **+0.371 [+0.324, +0.420]** | **retrieval** |
 
 - The method has power: the two-tower model beats recent popularity on 70% of credited clicks, an interval far from zero.
 - The ranker's offline lift does not carry over to next-event replay: retrieval order and the ranker tie (hit rate@10 0.104 against 0.101 frozen, 0.099 daily). Refreshing batch features daily does not change that, so stale features are not the explanation.
-- Likely explanation: an objective mismatch. The ranker was trained to rank everything a user rates over the following 15 months (the offline NDCG target), which favors broadly popular, well-rated films. The replay credits only the very next positive event, which is exactly what the sequential two-tower model was trained to predict. The offline evaluation measures long-horizon relevance; this test measures next-step relevance.
+- Likely explanation: an objective mismatch. The ranker was trained to rank everything a user rates over the following 15 months (the offline NDCG target), which may favor broadly popular, well-rated films (its top features are 30- and 7-day popularity and item mean rating). The replay credits only the very next positive event, which is exactly what the sequential two-tower model was trained to predict. The offline evaluation measures long-horizon relevance; this test measures next-step relevance.
 
 ## Consequences
 

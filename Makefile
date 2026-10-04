@@ -2,7 +2,7 @@
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -44,3 +44,8 @@ ingest: ## Validate raw CSV files and write Parquet tables
 
 split: ingest ## Create the global temporal split and the 10% user sample
 	$(UV) run python -m streamrank.data.split --stats-doc docs/data-split.md
+
+baselines: ## Tune baselines on the 10% sample and evaluate them on the full validation split
+	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.run_baselines --doc docs/baselines.md
+
+evaluate: baselines ## Run every offline evaluation

@@ -84,3 +84,7 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+[[tool.mypy.overrides]]
+module = ["implicit.*"]
+ignore_missing_imports = true

@@ -20,6 +20,8 @@ FloatArray = npt.NDArray[np.float32]
 IntArray = npt.NDArray[np.int64]
 Signal = Literal["all", "positive"]
 _SECONDS_PER_DAY = 86_400
+# Finite floor for items a model cannot score, so they still rank above excluded (-inf) items.
+_OUTSIDE_SCORE = np.float32(np.finfo(np.float32).min / 2)
 
 
 class Recommender(Protocol):
@@ -110,7 +112,7 @@ class ItemKNN:
     _users: _Fitted = field(default_factory=_Fitted)
 
     def fit(self, train: TrainData) -> None:
-        x = sp.csc_array(_signal_matrix(train, self.signal), dtype=np.float32)
+        x = sp.csc_array(_signal_matrix(train, self.signal).astype(np.float32))
         n = x.shape[1]
         norms = np.sqrt(np.asarray(x.multiply(x).sum(axis=0), dtype=np.float32).ravel())
         xt = sp.csr_array(x.T)
@@ -133,7 +135,7 @@ class ItemKNN:
         self._sim = sp.csr_array(
             (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, n)
         )
-        self._users = _Fitted(sp.csr_array(_signal_matrix(train, self.signal), dtype=np.float32))
+        self._users = _Fitted(_signal_matrix(train, self.signal).astype(np.float32))
 
     def score(self, user_rows: IntArray) -> FloatArray:
         if self._sim is None:
@@ -147,7 +149,7 @@ class EASE:
     """Embarrassingly Shallow Autoencoder (Steck 2019) on the `max_items` most popular items.
 
     B = I - P / diag(P) with P = (X^T X + lambda I)^-1 and diag(B) = 0. Items outside the
-    restricted set score lowest.
+    restricted set score lowest (but above items excluded from recommendation).
     """
 
     l2: float = 500.0
@@ -160,7 +162,7 @@ class EASE:
     _users: _Fitted = field(default_factory=_Fitted)
 
     def fit(self, train: TrainData) -> None:
-        x = sp.csr_array(_signal_matrix(train, self.signal), dtype=np.float64)
+        x = _signal_matrix(train, self.signal).astype(np.float64)
         counts = np.asarray(x.sum(axis=0)).ravel()
         kept = np.sort(np.argsort(-counts, kind="stable")[: self.max_items]).astype(np.int64)
         xk = sp.csc_array(x)[:, kept]
@@ -172,13 +174,13 @@ class EASE:
         self._weights = b.astype(np.float32)
         self._kept = kept
         self._n_items = x.shape[1]
-        self._users = _Fitted(sp.csr_array(sp.csc_array(x, dtype=np.float32)[:, kept]))
+        self._users = _Fitted(sp.csr_array(sp.csc_array(x.astype(np.float32))[:, kept]))
 
     def score(self, user_rows: IntArray) -> FloatArray:
         if self._weights is None:
             raise RuntimeError("call fit() first")
         restricted = self._users.rows(user_rows) @ self._weights
-        out = np.full((user_rows.size, self._n_items), -np.inf, dtype=np.float32)
+        out = np.full((user_rows.size, self._n_items), _OUTSIDE_SCORE, dtype=np.float32)
         out[:, self._kept] = restricted
         return out
 
@@ -208,7 +210,7 @@ class ALS:
             iterations=self.iterations,
             random_state=self.seed,
         )
-        x = sp.csr_matrix(_signal_matrix(train, self.signal), dtype=np.float32)
+        x = sp.csr_matrix(_signal_matrix(train, self.signal).astype(np.float32))
         model.fit(x, show_progress=False)
         self._user_factors = np.asarray(model.user_factors, dtype=np.float32)
         self._item_factors = np.asarray(model.item_factors, dtype=np.float32)

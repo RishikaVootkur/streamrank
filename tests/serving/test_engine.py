@@ -128,3 +128,14 @@ def test_api_endpoints(
         assert 'recommend_latency_seconds_bucket{le="0.05",stage="total"}' in metrics
         assert 'recommend_requests_total{source="popular",status="200"} 1.0' in metrics
     get_settings.cache_clear()
+
+
+def test_engine_variants_share_one_retrieval(serving_dir: Path, client: redis.Redis) -> None:
+    art = Artifacts.load(serving_dir)
+    engine = Engine(art, client, lambda _u: {}, _items(art))
+    lists = engine.variants(1, k=5)
+    assert lists is not None
+    # The conftest ranker scores by retrieval score, so both orders agree here.
+    assert lists["retrieval"] == lists["ranker"]
+    assert len(set(lists["retrieval"])) == 5 and not {1, 2, 3} & set(lists["retrieval"])
+    assert engine.variants(999, k=5) is None  # unknown user

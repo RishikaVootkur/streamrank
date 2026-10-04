@@ -67,3 +67,8 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
 - Replay order is time then a hash of (user, item); messages are keyed by user.
 - Streaming tests live in `tests/streaming/` and need Compose Redpanda (`--profile streaming`).
 - Quix Streams `Application.run` needs the main thread: run live jobs as subprocesses.
+
+## Online test simulation
+- `make simulate` replays validation events for 2,000 ranker-evaluation users (Redis db 10) and
+  interleaves two systems; results in `artifacts/simulation/`. About 4 minutes per run.
+- `--daily-features` refreshes batch features each simulated day from `data/features/`.

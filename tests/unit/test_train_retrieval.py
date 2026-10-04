@@ -16,6 +16,7 @@ from streamrank.models.train_retrieval import (
     TrainConfig,
     TwoTowerRecommender,
     early_stop_users,
+    load_recommender,
     run,
     split_targets,
 )
@@ -124,3 +125,49 @@ def test_run_writes_artifacts(
         == (summary["result"]["n_users"])
     )
     assert np.load(out / "item_vectors.npy").shape[1] == SMALL.dim
+
+
+def test_load_recommender_restores_scores(
+    data: tuple[Path, pl.DataFrame, pl.DataFrame], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    split_dir, movies, tags = data
+    processed = tmp_path / "data" / "processed"
+    processed.mkdir(parents=True)
+    movies.write_parquet(processed / "movies.parquet")
+    tags.write_parquet(processed / "tags.parquet")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    from streamrank.common.config import get_settings  # noqa: PLC0415
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "streamrank.models.train_retrieval.pick_device", lambda: torch.device("cpu")
+    )
+    out = tmp_path / "out"
+    run(
+        split_dir,
+        out,
+        SMALL,
+        TrainConfig(epochs=1, batch_size=64),
+        compare_ease=False,
+        n_resamples=10,
+    )
+    get_settings.cache_clear()
+    setup = load_setup(split_dir, "val")
+    rec = load_recommender(out, setup.train, movies, tags, device=torch.device("cpu"))
+    rows = setup.targets.user_rows[:4]
+    np.testing.assert_allclose(
+        rec.item_vectors().numpy(), np.load(out / "item_vectors.npy"), atol=1e-5
+    )
+    assert rec.score(rows).shape == (4, setup.train.n_items)
+
+    from streamrank.models.export_vectors import export  # noqa: PLC0415
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    get_settings.cache_clear()
+    path = export(out, split_dir, "val")
+    get_settings.cache_clear()
+    saved = np.load(path)
+    assert saved["items"].shape == (setup.train.n_items, SMALL.dim)
+    assert saved["users"].shape == (setup.targets.user_rows.size, SMALL.dim)
+    np.testing.assert_array_equal(saved["user_rows"], setup.targets.user_rows)
+    np.testing.assert_array_equal(saved["item_ids"], setup.train.item_ids)

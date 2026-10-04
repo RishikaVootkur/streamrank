@@ -209,6 +209,9 @@ def run(
         "fit_seconds": round(fit_s, 1),
     }
     booster.save_model(str(out_dir / "ranker.txt"), num_iteration=booster.best_iteration)
+    # Users the ranker never trained or tuned on: later stages (the online test simulation)
+    # must evaluate on these only.
+    np.save(out_dir / "eval_users.npy", eval_users)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     if doc_dir is not None:
         doc_dir.mkdir(parents=True, exist_ok=True)
@@ -219,7 +222,7 @@ def run(
         config={"ranker": asdict(cfg), "features": list(FEATURES), "input": str(features_path)},
         data_hash=str(verify_outputs(features_path.parent)["data_hash"]),
         seed=cfg.seed,
-        outputs=[out_dir / "ranker.txt", out_dir / "summary.json"],
+        outputs=[out_dir / "ranker.txt", out_dir / "summary.json", out_dir / "eval_users.npy"],
     )
     if mlflow.active_run() is not None:
         mlflow.log_params({f"lgb_{k}": v for k, v in params.items()})

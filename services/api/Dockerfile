@@ -19,6 +19,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM deps AS runtime
 COPY src ./src
 COPY feature_repo ./feature_repo
+# The API only reads the online store. Feast still validates the offline store config at
+# startup, so the image uses the file store that ships with Feast instead of DuckDB.
+RUN sed -i 's/type: duckdb/type: file/' feature_repo/feature_store.yaml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group serve --no-editable \
     && useradd --create-home --uid 10001 app

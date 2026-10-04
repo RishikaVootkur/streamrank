@@ -63,7 +63,7 @@ Validation users outside the 10% sample (5,816 users), full catalog, mean with 9
 | EASE (best baseline) | 0.2865 | 0.3907 | 0.1478 |
 | Difference | -0.0303 [-0.0368, -0.0235] | | |
 
-Ablations (10% sample, Recall@100): full 0.2306; no sequence encoder 0.1913; no content features 0.1834; no log-Q 0.1792; uniform training windows 0.1896.
+Ablations (10% sample, Recall@100): full 0.2306; no sequence encoder 0.1913; no content features 0.1834; no log-Q 0.1792; uniform training windows 0.1937.
 
 ## Blocked or changed
 

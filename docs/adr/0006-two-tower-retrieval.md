@@ -27,7 +27,7 @@ Option 3.
 - Same-second ties are ordered by a deterministic hash, not item index, because MovieLens has many bulk ratings in one second.
 - Evaluation: the shared full-catalog path. Early stopping uses the 10% sample's validation users, and results are reported on the other 90%, the same users the baseline tuning never saw. The EASE comparison is a paired bootstrap on those users.
 - Tuning on the 10% sample (held-out half of its validation users, paired differences against EASE on the same users). Temperature 0.1 beat 0.05 and 0.2; dimension 64 was worse than 128; dropout 0.3 matched 0.2 at temperature 0.1 and was kept for the larger full run. Full table in PR #35.
-- Full data: about 9 minutes per epoch on MPS (3.6 GB device memory with a periodic cache release; without it the allocator grew past 19 GB). Early stopping chose epoch 5 of 8.
+- Full data: about 9 minutes per epoch on MPS (device memory peaked at 3.9 GB with a periodic cache release; without it the process grew past 19 GB). Early stopping chose epoch 5 of 8.
 
 ## Results (full split, validation)
 
@@ -48,16 +48,16 @@ Two-tower minus EASE, Recall@100: **-0.0303 [-0.0368, -0.0235]**. The two-tower 
 | No sequence encoder (causal mean of inputs) | 0.1913 [0.1688, 0.2153] | -0.060 [-0.083, -0.037] |
 | No content features (ID only) | 0.1834 [0.1619, 0.2088] | -0.068 [-0.093, -0.042] |
 | No log-Q correction | 0.1792 [0.1560, 0.2029] | -0.072 [-0.098, -0.047] |
-| Uniform training windows (no recent bias) | 0.1896 [0.1662, 0.2128] | -0.062 [-0.086, -0.039] |
+| Uniform training windows (no recent bias) | 0.1937 [0.1709, 0.2181] | -0.058 [-0.083, -0.035] |
 
-Every component contributes: removing any one costs 0.04 to 0.05 Recall@100.
+Every component contributes: removing any one costs 0.04 to 0.05 Recall@100. (The untuned starting configuration, with uniform windows, temperature 0.05, and dropout 0.2, scored 0.1896.)
 
 ## Gap analysis
 
 Per-user comparison on the 5,816 held-out users (`docs/two-tower-segments.md`):
 
 - History length: the two-tower model ties EASE for users with 1 to 20 ratings (+0.016 [-0.012, 0.042]) and for users with more than 500 (+0.004 [-0.007, 0.016]). It loses for 21 to 500 ratings (about -0.05), where item co-occurrence is most informative and EASE is strongest.
-- Recency: the gap is largest for users active within a day of the cutoff (-0.065 [-0.088, -0.044]) and vanishes for users inactive over a year (+0.001 [-0.016, 0.018]). Removing log-Q makes the model worse overall, so the popularity correction is not the cause. A more likely cause is that EASE scores items by co-occurrence with the user's entire history, while the user tower compresses the last 200 events into one 128-dimensional vector, and one dot product cannot express EASE's item-item interactions.
+- Recency: the gap is largest for users active within a day of the cutoff (-0.065 [-0.088, -0.044]) and vanishes for users inactive over a year (+0.001 [-0.016, 0.018]). Removing log-Q lowers Recall@100 overall, but that run was not broken down by segment, so it does not rule out log-Q as a factor for recently active users. A plausible cause is capacity: EASE scores items by co-occurrence with the user's entire history, while the user tower compresses the last 200 events into one 128-dimensional vector, and one dot product cannot express all of EASE's item-item interactions.
 - Context: EASE's strength on MovieLens matches the literature (Steck 2019; Ferrari Dacrema et al. 2019). EASE cannot serve this system as is. Its 20,000 x 20,000 weight matrix (1.6 GB as float32) covers only the most popular items, cannot embed new items, and has no nearest-neighbor index for sub-millisecond retrieval. The two-tower model provides those properties, and the ranker recovers the ranking quality (M6).
 
 ## Consequences

@@ -31,3 +31,4 @@ BEST=(--recent-window-prob 0.5 --temperature 0.1 --dropout 0.3)
 run abl_no_sequence "${BEST[@]}" --use-sequence false
 run abl_no_content "${BEST[@]}" --use-content false
 run abl_no_logq "${BEST[@]}" --use-logq false
+run abl_uniform_windows "${BEST[@]}" --recent-window-prob 0

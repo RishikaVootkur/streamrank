@@ -31,7 +31,7 @@ Option 2.
 
 ## Results
 
-k6 against the container (2 CPUs): p99 6.7 ms at 250 requests per second with no errors or dropped requests; the tail degrades at 300 (p99 97 ms). Server-side median 4.8 ms, of which the user tower takes 3.0 ms. Details in `docs/load-test.md`. `make smoke` passes.
+k6 against the container (2 CPUs): p99 6.8 ms at 250 requests per second with no errors or dropped requests; the tail degrades at 300 (p99 97 ms). Server-side median 4.8 ms, of which the user tower takes 3.0 ms. Details in `docs/load-test.md`. `make smoke` passes.
 
 ## Consequences
 

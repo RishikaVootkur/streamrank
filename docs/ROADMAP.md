@@ -75,7 +75,7 @@ On 2,908 held-out validation users (their validation labels were never used to t
 
 ### Serving API (M7)
 
-FastAPI with the ONNX user tower, HNSW retrieval, Feast online features, the ONNX ranker, and a popularity fallback. k6 against the container (2 CPUs, one worker): **p99 6.7 ms at 250 requests per second** with no errors (p99 97 ms at 300). Server-side median 4.8 ms. `make smoke` passes. See [load-test.md](load-test.md) and [ADR 0009](adr/0009-serving-architecture.md).
+FastAPI with the ONNX user tower, HNSW retrieval, Feast online features, the ONNX ranker, and a popularity fallback. k6 against the container (2 CPUs, one worker): **p99 6.8 ms at 250 requests per second** with no errors (p99 97 ms at 300). Server-side median 4.8 ms. `make smoke` passes. See [load-test.md](load-test.md) and [ADR 0009](adr/0009-serving-architecture.md).
 
 ## Blocked or changed
 

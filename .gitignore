@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local config and secrets
+.env
+
+# Data and artifacts (MovieLens data must never be committed)
+data/
+artifacts/
+mlruns/
+mlartifacts/
+*.parquet
+*.zip
+ml-32m*/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

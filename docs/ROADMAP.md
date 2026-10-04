@@ -9,9 +9,6 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M2 Evaluation library and baselines
 - [x] M3 PySpark offline features and Feast
 - [x] M4 Two-tower retrieval with sequential user tower
-- [ ] M5 FAISS index
-
-- [ ] M4 Two-tower retrieval with sequential user tower
 - [x] M5 FAISS index
 - [x] M6 LightGBM LambdaMART ranker
 - [ ] M7 Serving API

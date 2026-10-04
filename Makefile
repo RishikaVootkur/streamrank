@@ -2,7 +2,7 @@
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down
+.PHONY: help setup lint format typecheck test test-integration up down data
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -35,3 +35,6 @@ up: ## Start the local stack
 
 down: ## Stop the local stack
 	$(COMPOSE) down
+
+data: ## Download MovieLens 32M and verify its checksum
+	$(UV) run python -m streamrank.data.download

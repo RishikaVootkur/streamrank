@@ -16,10 +16,12 @@ htmlcov/
 .env
 
 # Data and artifacts (MovieLens data must never be committed)
-/data/
-/artifacts/
-/mlruns/
-/mlartifacts/
+data/
+!src/streamrank/data/
+artifacts/
+mlruns/
+mlartifacts/
+*.csv
 *.parquet
 *.zip
 ml-32m*/

@@ -67,3 +67,25 @@ def test_cli_writes_movielens_headers(tmp_path: Path) -> None:
         assert tuple(header.split(",")) == cols
     links = pl.read_csv(tmp_path / "links.csv")
     assert links.height == 40
+
+
+def test_release_year_not_after_first_rating(data: SyntheticData) -> None:
+    years = data.movies.select(
+        "movieId", pl.col("title").str.extract(r"\((\d{4})\)$", 1).cast(pl.Int32).alias("year")
+    )
+    first = data.ratings.group_by("movieId").agg(pl.from_epoch("timestamp").min().dt.year())
+    joined = years.join(first, on="movieId").drop_nulls()
+    assert (joined["year"] <= joined["timestamp"]).all()
+
+
+def test_imdb_ids_are_zero_padded(data: SyntheticData) -> None:
+    assert data.links["imdbId"].str.contains(r"^\d{7}$").all()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"n_items": 8, "min_interactions": 5}, {"n_users": 0}, {"latent_dim": 0}],
+)
+def test_invalid_config_is_rejected(kwargs: dict[str, int]) -> None:
+    with pytest.raises(ValueError, match="must"):
+        SyntheticConfig(**kwargs)  # type: ignore[arg-type]

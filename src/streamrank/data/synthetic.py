@@ -72,6 +72,14 @@ class SyntheticConfig:
     end: datetime = datetime(2023, 10, 1, tzinfo=UTC)
     seed: int = 42
 
+    def __post_init__(self) -> None:
+        if min(self.n_users, self.n_items, self.min_interactions, self.latent_dim) < 1:
+            raise ValueError("sizes must be positive")
+        if self.n_items < 2 * self.min_interactions:
+            raise ValueError("n_items must be at least twice min_interactions")
+        if not self.start < self.end:
+            raise ValueError("start must be before end")
+
 
 @dataclass(frozen=True)
 class SyntheticData:
@@ -105,11 +113,16 @@ def _round_half(x: FloatArray) -> FloatArray:
 
 
 def _movies(
-    cfg: SyntheticConfig, rng: np.random.Generator, movie_ids: np.ndarray, item_vecs: np.ndarray
+    cfg: SyntheticConfig,
+    rng: np.random.Generator,
+    movie_ids: np.ndarray,
+    item_vecs: FloatArray,
+    first_rating_year: np.ndarray,
 ) -> pl.DataFrame:
     genre_vecs = _unit_rows(rng.normal(size=(len(GENRES), cfg.latent_dim)))
     sims = item_vecs @ genre_vecs.T
-    years = rng.integers(1930, 2024, size=cfg.n_items)
+    # A movie is never released after its first rating.
+    years = np.minimum(rng.integers(1930, cfg.end.year + 1, size=cfg.n_items), first_rating_year)
     genre_strs: list[str] = []
     titles: list[str] = []
     for i in range(cfg.n_items):
@@ -132,17 +145,30 @@ def _movies(
 
 def _links(rng: np.random.Generator, movie_ids: np.ndarray) -> pl.DataFrame:
     n = len(movie_ids)
-    imdb = rng.choice(np.arange(100_000, 9_999_999), size=n, replace=False)
+    imdb = rng.choice(np.arange(1, 9_999_999), size=n, replace=False)
     tmdb = rng.choice(np.arange(1, 1_000_000), size=n, replace=False)
     tmdb_missing = rng.random(n) < _MISSING_TMDB_RATE
     return pl.DataFrame(
         {
             "movieId": movie_ids,
-            "imdbId": imdb,
+            # The real file stores IMDb IDs as 7-digit zero-padded strings.
+            "imdbId": [f"{i:07d}" for i in imdb],
             "tmdbId": pl.Series(tmdb, dtype=pl.Int64).scatter(np.flatnonzero(tmdb_missing), None),
         },
-        schema={"movieId": pl.Int64, "imdbId": pl.Int64, "tmdbId": pl.Int64},
+        schema={"movieId": pl.Int64, "imdbId": pl.String, "tmdbId": pl.Int64},
     )
+
+
+def _first_rating_year(ratings: pl.DataFrame, movie_ids: np.ndarray) -> np.ndarray:
+    first = ratings.group_by("movieId").agg(pl.col("timestamp").min())
+    years = dict(
+        zip(
+            first["movieId"].to_list(),
+            first.select(pl.from_epoch("timestamp").dt.year())["timestamp"].to_list(),
+            strict=True,
+        )
+    )
+    return np.array([years.get(int(m), 9999) for m in movie_ids])
 
 
 def generate(cfg: SyntheticConfig | None = None) -> SyntheticData:
@@ -230,7 +256,7 @@ def generate(cfg: SyntheticConfig | None = None) -> SyntheticData:
 
     return SyntheticData(
         ratings=ratings_df,
-        movies=_movies(cfg, rng, movie_ids, item_vecs),
+        movies=_movies(cfg, rng, movie_ids, item_vecs, _first_rating_year(ratings_df, movie_ids)),
         tags=tags_df,
         links=_links(rng, movie_ids),
     )

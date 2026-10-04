@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -101,3 +101,6 @@ train-ranker: ## Export candidates, build ranker features, and train the LambdaM
 export-onnx: ## Export the trained user tower to ONNX and check parity with PyTorch
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.serving.export_onnx \
 		--model-dir $(RETRIEVAL_MODEL)
+serving-artifacts: ## Collect serving artifacts and load user state into Redis
+	$(COMPOSE) up -d --wait redis
+	$(UV) run python -m streamrank.serving.build

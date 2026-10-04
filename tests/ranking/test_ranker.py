@@ -150,6 +150,9 @@ def test_ranker_learns_and_reports_lift(tmp_path: Path) -> None:
     assert summary["ndcg@10_lift"]["low"] > 0
     assert next(iter(summary["shap_importance"])) == "item_mean_rating"
     assert verify_outputs(out)["stage"] == "train_ranker"
+    eval_users = np.load(out / "eval_users.npy")
+    assert eval_users.size == summary["n_users"]["eval"]
+    assert not {0, 1} & set(eval_users.tolist())  # retrieval early-stop users are excluded
     assert json.loads((out / "summary.json").read_text())["best_iteration"] >= 1
     assert (tmp_path / "docs" / "ranker-shap.png").stat().st_size > 0
 

@@ -14,7 +14,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M7 Serving API
 - [x] M8 Streaming session features
 - [x] M9 Online test simulation
-- [ ] M10 Observability, demo UI, Kubernetes
+- [x] M10 Observability, demo UI, Kubernetes
 - [x] M11 Final run, docs, release
 
 ## Scope notes
@@ -103,4 +103,5 @@ Retrieval refitted on train + validation for the 5 epochs early stopping chose o
 - M4: the user tower has no static user features. Each event's embedding carries the positive flag and the time gap since the previous event, and user statistics (activity, rating mean, tenure) are ranker features instead.
 - M6/M8: session features are computed online and parity-tested (ADR 0010), but the ranker was trained on batch features only. Its training examples are built at one cutoff, and almost no user has events in the 30 minutes before it, so session features would be constant in training. Recent activity reaches recommendations through the user tower's sequence, which the stream updates on every event.
 - M11: on the test period the two-stage system trails EASE on NDCG@10 (-0.0257 [-0.0310, -0.0207]), where it tied on validation (+0.0033 [-0.0044, +0.0108]). The ranker still adds a clear gain over retrieval order, and the candidates it reorders already trail EASE (ADR 0006). No further tuning was done on test.
+- M7: p99 under 50 ms held up to 250 requests per second on a quiet laptop, but only up to about 100 with other work running (load average about 5): p99 41 ms at 100, 114 ms at 150. The single API worker is bound by Python's global interpreter lock, so more worker processes or replicas (as on kind) are the way to add headroom. Serving numbers for both conditions are in [results.md](results.md).
 - SHAP importance for the ranker uses LightGBM's built-in TreeSHAP (`pred_contrib=True`). The `shap` package currently resolves to an old `llvmlite` that fails to build with NumPy 2.5.

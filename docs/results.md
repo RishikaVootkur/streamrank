@@ -77,11 +77,16 @@ hnsw(M=16,efC=200,ef=400): recall@200 against exact search 0.9992, single-query 
 
 ### Serving latency (k6)
 
+One API worker with 2 CPUs in Compose; 1 CPU per pod on kind. The quiet-host runs were measured with nothing else running; the final runs had other work on the laptop (load average about 5), which costs the single Python worker most of its headroom.
+
 | Run | p50 ms | p95 ms | p99 ms | Dropped |
 | --- | ---: | ---: | ---: | ---: |
-| Compose, 100 req/s | 5.4 | 6.6 | 7.6 | 0 |
-| Compose, 200 req/s | 5.0 | 5.8 | 6.9 | 0 |
-| Compose, 250 req/s | 5.2 | 6.0 | 6.8 | 0 |
-| Compose, 300 req/s | 5.1 | 6.4 | 96.8 | 4 |
-| kind, 150 req/s, HPA scale-out from 1 pod (new connection per request) | 6.1 | 2297.5 | 2503.1 | 721 |
+| Compose, 100 req/s, quiet host (M7) | 5.4 | 6.6 | 7.6 | 0 |
+| Compose, 200 req/s, quiet host (M7) | 5.0 | 5.8 | 6.9 | 0 |
+| Compose, 250 req/s, quiet host (M7) | 5.2 | 6.0 | 6.8 | 0 |
+| Compose, 300 req/s, quiet host (M7) | 5.1 | 6.4 | 96.8 | 4 |
+| Compose, 100 req/s, busy host (final) | 5.5 | 10.0 | 41.3 | 0 |
+| Compose, 150 req/s, busy host (final) | 5.5 | 19.0 | 113.8 | 0 |
+| Compose, 200 req/s, busy host (final) | 5.8 | 314.6 | 670.2 | 260 |
+| kind, 150 req/s, HPA scale-out from 1 pod (new connection per request) | 6.5 | 527.6 | 1919.7 | 243 |
 | kind, 150 req/s, 4 pods | 5.7 | 8.1 | 16.5 | 34 |

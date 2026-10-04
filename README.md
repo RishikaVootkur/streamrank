@@ -7,14 +7,39 @@ A two-stage movie recommender that returns a user's next 10 movies in millisecon
 ## Results
 
 <!-- results:begin -->
+Final run on the test period: 6,601 warm test users, full-catalog ranking, 95% bootstrap intervals over users. Retrieval models were refitted on train + validation history; nothing was tuned or early-stopped on test labels.
+
+| System | Recall@100 | NDCG@10 | Recall@10 |
+| --- | ---: | ---: | ---: |
+| EASE (best baseline) | 0.2697 [0.2642, 0.2757] | 0.1594 [0.1544, 0.1649] | 0.1527 [0.1478, 0.1580] |
+| Two-tower retrieval | 0.2410 [0.2350, 0.2467] | 0.1100 [0.1060, 0.1145] | 0.1102 [0.1061, 0.1147] |
+| Two-tower + LambdaMART ranker | 0.2410 [0.2350, 0.2467] | 0.1337 [0.1292, 0.1384] | 0.1333 [0.1287, 0.1380] |
+
+- Two-tower against EASE, Recall@100: -0.0287 [-0.0350, -0.0228] (worse).
+- Ranker against retrieval order, NDCG@10: +0.0237 [+0.0206, +0.0270] (better).
+- Two-stage against EASE, NDCG@10: -0.0257 [-0.0310, -0.0207] (worse).
+- The ranker reorders the same 200 candidates, so Recall@100 is shared by both two-tower rows. It was trained on validation labels and applied unchanged, with features as of the test cutoff and retrieval scores from the refitted model.
+
+#### Two-tower ablations (validation, 10% user sample)
+
+Recall@100 on the sample's users that early stopping did not use.
+
+| Variant | Recall@100 |
+| --- | ---: |
+| Full model | 0.2306 [0.2049, 0.2572] |
+| No sequence encoder (mean of history embeddings) | 0.1913 [0.1688, 0.2153] |
+| No content features (item ID only) | 0.1834 [0.1619, 0.2088] |
+| No log-Q correction | 0.1792 [0.1560, 0.2029] |
+| Uniform training windows (no recent-window sampling) | 0.1937 [0.1709, 0.2181] |
 <!-- results:end -->
 
 More results are in [docs/results.md](docs/results.md): baselines on both periods, the ranker's SHAP importance, index benchmarks, the interleaving replay, and serving latency. Decisions and their trade-offs are in [docs/adr](docs/adr).
 
 What the numbers say:
 
-- EASE, a linear item-to-item model, is the strongest single model on this data, and the two-tower model does not beat it on recall. [ADR 0006](docs/adr/0006-two-tower-retrieval.md) analyzes the gap by user segment. The two-tower model stays as the retrieval stage for three reasons: it serves from a nearest-neighbor index in under a millisecond, it uses the latest events without refitting, and it embeds new items from their content.
-- The ranker adds a clear NDCG@10 gain over retrieval order.
+- EASE, a linear item-to-item model, is the strongest single model on both periods. On test, the two-tower model trails it on Recall@100, and also trails ALS (0.2524). [ADR 0006](docs/adr/0006-two-tower-retrieval.md) analyzes the gap by user segment.
+- The two-tower model stays as the retrieval stage anyway. It serves from a nearest-neighbor index in under a millisecond over the whole catalog, and it embeds new items from their content. EASE keeps a dense item-by-item matrix (20,000 items here, 1.6 GB) and cannot score items it has not seen in training.
+- The ranker adds a clear NDCG@10 gain over retrieval order on both periods (+0.035 on validation, +0.024 on test). The full system tied EASE on validation but trails it on test.
 - A replay of real next events with team-draft interleaving tells a different story ([ADR 0011](docs/adr/0011-online-test-simulation.md)). There the ranker only ties retrieval order, while retrieval clearly beats recent popularity. The offline metric rewards long-horizon relevance; the replay rewards the very next event, which is what the sequential model was trained to predict.
 
 ## Architecture

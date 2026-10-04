@@ -86,7 +86,7 @@ make drift              # Evidently drift report, docs/drift.md
 ## 7. Final run and report
 
 ```bash
-make final-run          # refit on train + validation, score everything on test (about 75 min)
+make final-run          # refit on train + validation, score everything on test (about 70 min)
 make report             # docs/results.md and the README results table from saved results
 ```
 

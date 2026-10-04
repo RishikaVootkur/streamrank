@@ -30,7 +30,15 @@ Not intended for real users without further work: no fairness review across user
 
 ### Results
 
-See the [README results](../README.md#results) for the final test-period numbers and [results.md](results.md) for everything else.
+Test period, 6,601 warm users, mean with 95% bootstrap interval:
+
+| System | Recall@100 | NDCG@10 |
+| --- | ---: | ---: |
+| EASE (best baseline) | 0.2697 [0.2642, 0.2757] | 0.1594 [0.1544, 0.1649] |
+| Two-tower retrieval | 0.2410 [0.2350, 0.2467] | 0.1100 [0.1060, 0.1145] |
+| Two-tower + ranker | 0.2410 [0.2350, 0.2467] | 0.1337 [0.1292, 0.1384] |
+
+The ranker improves NDCG@10 over retrieval order by +0.0237 [+0.0206, +0.0270]. The full system trails EASE by -0.0257 [-0.0310, -0.0207]. Serving takes about 5 ms per request at the median on 2 CPUs. Everything else is in [results.md](results.md).
 
 ## Limitations and risks
 

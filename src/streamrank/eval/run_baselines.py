@@ -131,7 +131,9 @@ def render_markdown(rows: list[dict[str, Any]], context: dict[str, Any]) -> str:
         "# Baseline results",
         "",
         f"Evaluation: {context['eval_split']} split, `{context['partition']}` partition, "
-        f"{context['n_users']:,} users with training history and at least one positive. "
+        f"{context['n_users']:,} users with training history and at least one positive "
+        f"({context['n_cold_users']:,} more users with positives have no training history; "
+        "they are served by the popularity fallback and are not in this table). "
         f"Ranked against all {context['n_items']:,} catalog items, excluding each user's "
         "training items. Cells show the mean with a 95% bootstrap interval over users "
         f"({context['n_resamples']} resamples).",

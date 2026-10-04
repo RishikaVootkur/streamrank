@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+data
+artifacts
+mlruns
+.local
+.claude
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache

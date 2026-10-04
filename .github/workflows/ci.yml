@@ -47,6 +47,22 @@ jobs:
       - if: always()
         run: docker compose down -v
 
+  spark-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/spark/Dockerfile
+          target: test
+          tags: streamrank-spark:test
+          load: true
+          cache-from: type=gha,scope=spark-test
+          cache-to: type=gha,mode=max,scope=spark-test
+      - run: docker run --rm streamrank-spark:test
+
   discover-services:
     runs-on: ubuntu-latest
     outputs:

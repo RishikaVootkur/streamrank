@@ -4,7 +4,7 @@ import pandera.errors
 import polars as pl
 import pytest
 
-from streamrank.common.provenance import read_manifest
+from streamrank.common.provenance import read_manifest, verify_outputs
 from streamrank.data.ingest import ingest, main, read_movies, read_tags
 from streamrank.data.synthetic import SyntheticConfig, generate
 
@@ -28,6 +28,28 @@ def test_ingest_writes_typed_tables_and_manifest(raw_dir: Path, tmp_path: Path) 
     assert manifest["stage"] == "ingest"
     assert len(manifest["data_hash"]) == 64
     assert manifest["row_counts"] == counts
+    assert set(manifest["outputs"]) == {f"{n}.parquet" for n in counts}
+    assert verify_outputs(out)["stage"] == "ingest"
+
+
+def test_empty_and_orphan_tags_are_counted(raw_dir: Path, tmp_path: Path) -> None:
+    with (raw_dir / "tags.csv").open("a") as f:
+        f.write('1,999999,orphan,1500000000\n1,1,"   ",1500000000\n')
+    out = tmp_path / "processed"
+    ingest(raw_dir, out)
+    dropped = read_manifest(out)["dropped"]
+    assert dropped["orphan_tags"] == 1
+    assert dropped["empty_tags"] == 1
+
+
+def test_failed_run_leaves_no_manifest(raw_dir: Path, tmp_path: Path) -> None:
+    out = tmp_path / "processed"
+    ingest(raw_dir, out)
+    with (raw_dir / "ratings.csv").open("a") as f:
+        f.write("1,1,9.0,1\n")
+    with pytest.raises(pandera.errors.SchemaError):
+        ingest(raw_dir, out)
+    assert not (out / "manifest.json").exists()
 
 
 def test_ingest_is_idempotent(raw_dir: Path, tmp_path: Path) -> None:
@@ -45,7 +67,7 @@ def test_orphan_ratings_are_dropped(raw_dir: Path, tmp_path: Path) -> None:
         f.write("1,999999,4.0,1500000000\n")
     out = tmp_path / "processed"
     ingest(raw_dir, out)
-    assert read_manifest(out)["dropped_orphan_ratings"] == 1
+    assert read_manifest(out)["dropped"]["orphan_ratings"] == 1
 
 
 @pytest.mark.parametrize(

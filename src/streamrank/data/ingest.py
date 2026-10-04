@@ -8,7 +8,12 @@ import polars as pl
 
 from streamrank.common.config import get_settings
 from streamrank.common.logging import configure_logging
-from streamrank.common.provenance import combined_hash, write_manifest
+from streamrank.common.provenance import (
+    begin_stage,
+    combined_hash,
+    write_manifest,
+    write_parquet_atomic,
+)
 from streamrank.data.columns import LINKS_FILE, MOVIES_FILE, NO_GENRES, RATINGS_FILE, TAGS_FILE
 from streamrank.data.schemas import Links, Movies, Ratings, Tags
 
@@ -81,33 +86,48 @@ def read_links(raw_dir: Path) -> pl.DataFrame:
 def ingest(raw_dir: Path, out_dir: Path) -> dict[str, int]:
     """Validate the raw CSV files and write Parquet tables plus a manifest to `out_dir`.
 
-    Ratings that reference unknown movies are dropped, and the count is reported.
+    Ratings and tags that reference unknown movies, and empty tags, are dropped; every
+    drop is counted in the manifest. The old manifest is removed first and written last,
+    so a crashed run never leaves a manifest describing mixed outputs.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
+    begin_stage(out_dir)
     movies = read_movies(raw_dir)
     ratings = read_ratings(raw_dir)
+    raw_tag_rows = pl.scan_csv(raw_dir / TAGS_FILE, quote_char='"').select(pl.len()).collect()
     tags = read_tags(raw_dir)
     links = read_links(raw_dir)
 
     known = movies["item_id"].implode()
-    orphan_ratings = ratings.filter(~pl.col("item_id").is_in(known)).height
+    drops = {
+        "orphan_ratings": ratings.filter(~pl.col("item_id").is_in(known)).height,
+        "empty_tags": int(raw_tag_rows.item()) - tags.height,
+        "orphan_tags": tags.filter(~pl.col("item_id").is_in(known)).height,
+    }
     ratings = ratings.filter(pl.col("item_id").is_in(known))
     tags = tags.filter(pl.col("item_id").is_in(known))
 
     tables = {"ratings": ratings, "movies": movies, "tags": tags, "links": links}
+    outputs = []
     for name, df in tables.items():
-        df.write_parquet(out_dir / f"{name}.parquet")
+        path = out_dir / f"{name}.parquet"
+        write_parquet_atomic(df, path)
+        outputs.append(path)
     counts = {name: df.height for name, df in tables.items()}
     raw_files = [raw_dir / f for f in (RATINGS_FILE, MOVIES_FILE, TAGS_FILE, LINKS_FILE)]
     write_manifest(
         out_dir,
         stage="ingest",
-        config={"raw_dir": str(raw_dir)},
+        config={
+            "raw_dir": str(raw_dir),
+            "out_dir": str(out_dir),
+            "drop_rules": "ratings/tags of unknown movies; empty tags after trimming",
+        },
         data_hash=combined_hash(raw_files),
         seed=None,
-        extra={"row_counts": counts, "dropped_orphan_ratings": orphan_ratings},
+        outputs=outputs,
+        extra={"row_counts": counts, "dropped": drops},
     )
-    log.info("ingested", extra={"row_counts": counts, "dropped_orphan_ratings": orphan_ratings})
+    log.info("ingested", extra={"row_counts": counts, "dropped": drops})
     return counts
 
 

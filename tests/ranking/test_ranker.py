@@ -217,3 +217,31 @@ def test_build_features_cli_uses_cutoff_stats(
     assert out.height == 2 and set(FEATURES) <= set(out.columns)
     assert verify_outputs(tmp_path / "out")["stage"] == "ranker_features"
     assert np.load(tmp_path / "out" / "early_stop_users.npy").tolist() == [5]
+
+
+def test_ranked_metrics_match_ndcg_definition() -> None:
+    import lightgbm as lgb  # noqa: PLC0415
+
+    from streamrank.eval.two_stage import ranked_metrics  # noqa: PLC0415
+
+    rng = np.random.default_rng(5)
+    rows = []
+    for u in range(20):
+        for rank in range(1, 16):
+            feats = {f: float(rng.normal()) for f in FEATURES}
+            feats["retrieval_rank"] = float(rank)
+            rows.append(
+                {"user_id": u, "item_id": rank, "label": int(rank == 3), "n_relevant": 2, **feats}
+            )
+    df = pl.DataFrame(rows)
+    x = df.select(FEATURES).to_numpy().astype(np.float32)
+    booster = lgb.train(
+        {"objective": "regression", "verbosity": -1, "num_threads": 1},
+        lgb.Dataset(x, -df["retrieval_rank"].to_numpy()),
+        num_boost_round=30,
+    )
+    out = ranked_metrics(df, booster, np.arange(20))
+    # The booster learned retrieval order: the relevant item sits at rank 3 of 2 relevant.
+    expected = (1 / np.log2(4)) / (1 + 1 / np.log2(3))
+    assert np.allclose(out["ndcg@10"].to_numpy(), expected, atol=1e-6)
+    assert np.allclose(out["recall@10"].to_numpy(), 0.5)

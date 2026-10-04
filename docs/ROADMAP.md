@@ -13,7 +13,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 
 - [ ] M4 Two-tower retrieval with sequential user tower
 - [x] M5 FAISS index
-- [ ] M6 LightGBM LambdaMART ranker
+- [x] M6 LightGBM LambdaMART ranker
 - [ ] M7 Serving API
 - [x] M8 Streaming session features
 - [ ] M9 Online test simulation
@@ -71,6 +71,10 @@ Ablations (10% sample, Recall@100): full 0.2306; no sequence encoder 0.1913; no 
 ### FAISS index (M5)
 
 HNSW (M = 16, efSearch = 400) over 65,723 item vectors: recall@200 against exact search 0.9992, downstream Recall@100 unchanged from exact (0.2569), single-thread latency p50 0.27 ms and p99 0.39 ms. Recall versus latency for HNSW and IVF-PQ settings in [faiss-benchmark.md](faiss-benchmark.md); choice in [ADR 0007](adr/0007-faiss-index.md).
+
+### LambdaMART ranker (M6)
+
+On 2,908 held-out validation users (never used to train or tune the ranker or the retrieval model): NDCG@10 rises from 0.1155 [0.1088, 0.1222] in retrieval order to 0.1504 [0.1435, 0.1576], a lift of **+0.0349 [+0.0298, +0.0401]**. Against EASE on the same users the two-stage system is level: NDCG@10 difference +0.0033 [-0.0044, +0.0108]. Top features by mean |SHAP|: retrieval rank, 30-day item popularity, genre affinity ([plot](ranker-shap.png), [ADR 0008](adr/0008-lambdamart-ranker.md)).
 
 ## Blocked or changed
 

@@ -67,6 +67,7 @@ monitor = [
     "evidently>=0.7.23",
 ]
 demo = [
+    "redis>=6.4,<8",
     "streamlit>=1.65.0",
 ]
 
@@ -113,6 +114,8 @@ markers = [
 [tool.coverage.run]
 source = ["streamrank"]
 branch = true
+# Streamlit page glue; its logic lives in demo/view.py, which is tested.
+omit = ["src/streamrank/demo/app.py"]
 
 [tool.coverage.report]
 show_missing = true

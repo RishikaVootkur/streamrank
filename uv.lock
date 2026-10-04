@@ -3158,6 +3158,7 @@ dependencies = [
 
 [package.dev-dependencies]
 demo = [
+    { name = "redis" },
     { name = "streamlit" },
 ]
 dev = [
@@ -3222,7 +3223,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-demo = [{ name = "streamlit", specifier = ">=1.65.0" }]
+demo = [
+    { name = "redis", specifier = ">=6.4,<8" },
+    { name = "streamlit", specifier = ">=1.65.0" },
+]
 dev = [
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "pandas-stubs", specifier = ">=2.3,<2.4" },

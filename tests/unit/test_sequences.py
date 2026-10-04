@@ -115,3 +115,16 @@ def test_item_content_uses_only_past_tags() -> None:
     assert content.tags[1].tolist() == [1, 0]
     assert content.tags[2, 0] > 0 and content.tags[3, 0] > 0
     assert content.n_year_buckets == content.year.max() + 1
+
+
+def test_same_second_ties_are_not_ordered_by_item() -> None:
+    n = 40
+    history = pl.DataFrame(
+        {"user_id": [1] * n, "item_id": list(range(n)), "rating": [5.0] * n, "ts": [7] * n}
+    )
+    seqs = build_sequences(build_train(history, cutoff_ts=100))
+    tokens = seqs.tokens.tolist()
+    assert sorted(tokens) == list(range(1, n + 1))
+    assert tokens != sorted(tokens)
+    # Deterministic across builds.
+    assert build_sequences(build_train(history, cutoff_ts=100)).tokens.tolist() == tokens

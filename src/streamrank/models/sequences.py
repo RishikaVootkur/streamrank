@@ -49,8 +49,22 @@ def gap_bucket(seconds: IntArray) -> IntArray:
     return out
 
 
+def _tie_key(rows: IntArray, cols: IntArray) -> npt.NDArray[np.uint64]:
+    """Deterministic pseudo-random key per (user, item) for ordering same-second events.
+
+    MovieLens has many bulk ratings within one second; ordering them by item index would
+    teach the model that the next item usually has a larger index.
+    """
+    with np.errstate(over="ignore"):
+        x = rows.astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15) + cols.astype(np.uint64)
+        x ^= x >> np.uint64(31)
+        x *= np.uint64(0xBF58476D1CE4E5B9)
+        x ^= x >> np.uint64(29)
+    return x
+
+
 def build_sequences(train: TrainData) -> Sequences:
-    """Sort every user's training interactions by time (ties broken by item)."""
+    """Sort every user's training interactions by time (same-second ties in hashed order)."""
     marked = sp.csr_array(train.interactions + 2 * train.positives)
     marked.sort_indices()
     ts = sp.csr_array(train.timestamps)
@@ -62,7 +76,7 @@ def build_sequences(train: TrainData) -> Sequences:
     rows = np.repeat(np.arange(train.n_users, dtype=np.int64), np.diff(marked.indptr))
     cols = marked.indices.astype(np.int64)
     times = ts.data.astype(np.int64)
-    order = np.lexsort((cols, times, rows))
+    order = np.lexsort((_tie_key(rows, cols), times, rows))
     rows, cols, times = rows[order], cols[order], times[order]
     positive = marked.data[order] >= 3  # noqa: PLR2004 - 1 (rated) + 2 (positive)
     indptr = np.zeros(train.n_users + 1, dtype=np.int64)

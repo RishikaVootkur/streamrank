@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift final-run report
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift final-run report kind-up helm-install kind-load kind-down
 
 
 help: ## List targets
@@ -166,3 +166,53 @@ final-run: ## Final run: refit on train + validation, score retrieval, ranker, b
 
 report: ## Write docs/results.md and the README results table from saved results
 	$(UV) run python -m streamrank.report
+
+KIND_CLUSTER ?= streamrank
+KUBE := kubectl --context kind-$(KIND_CLUSTER)
+K8S_ARTIFACTS := $(or $(realpath $(or $(ARTIFACTS_HOST_DIR),artifacts)),$(abspath $(or $(ARTIFACTS_HOST_DIR),artifacts)))
+K8S_DATA := $(or $(realpath $(or $(DATA_HOST_DIR),data)),$(abspath $(or $(DATA_HOST_DIR),data)))
+METRICS_SERVER_URL := https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
+
+kind-up: ## Create the kind cluster, copy Redis state into it, load images, add metrics-server
+	mkdir -p $(K8S_ARTIFACTS)/k8s/redis
+	$(COMPOSE) up -d --wait redis
+	$(COMPOSE) exec -T redis redis-cli SAVE
+	$(COMPOSE) cp redis:/data/dump.rdb $(K8S_ARTIFACTS)/k8s/redis/dump.rdb
+	chmod 644 $(K8S_ARTIFACTS)/k8s/redis/dump.rdb
+	sed -e 's|ARTIFACTS_DIR|$(K8S_ARTIFACTS)|' -e 's|DATA_DIR|$(K8S_DATA)|' \
+		deploy/kind/cluster.yaml.tpl > $(K8S_ARTIFACTS)/k8s/cluster.yaml
+	kind get clusters | grep -qx $(KIND_CLUSTER) || \
+		kind create cluster --config $(K8S_ARTIFACTS)/k8s/cluster.yaml
+	$(COMPOSE) --profile serving build api
+	docker pull -q redis:8.8.3-alpine
+	@# Archives work with Docker's containerd image store, where `kind load docker-image` fails.
+	for img in streamrank-api:local redis:8.8.3-alpine; do \
+		docker save --platform linux/$$(docker info --format '{{.Architecture}}' | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+			-o $(K8S_ARTIFACTS)/k8s/image.tar $$img && \
+		kind load image-archive $(K8S_ARTIFACTS)/k8s/image.tar --name $(KIND_CLUSTER) || exit 1; \
+	done
+	rm -f $(K8S_ARTIFACTS)/k8s/image.tar
+	$(KUBE) apply -f $(METRICS_SERVER_URL)
+	$(KUBE) -n kube-system patch deployment metrics-server --type=json \
+		-p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+	$(KUBE) -n kube-system rollout status deployment metrics-server --timeout=180s
+
+helm-install: ## Install or upgrade the StreamRank chart in the kind cluster
+	helm --kube-context kind-$(KIND_CLUSTER) upgrade --install streamrank deploy/helm/streamrank --wait --timeout 10m
+	$(KUBE) get pods,svc,hpa
+
+kind-load: ## Load the API in kind (NodePort 18000) and record HPA scaling
+	cp $(K8S_ARTIFACTS)/serving/loadtest_users.json $(K8S_ARTIFACTS)/k8s/
+	docker run -d --rm --name streamrank-k6-kind --network kind \
+		-v $(CURDIR)/loadtest:/scripts:ro -v $(K8S_ARTIFACTS)/k8s:/data \
+		-e BASE_URL=http://$(KIND_CLUSTER)-control-plane:30080 -e RATE=$(LOAD_RATE) \
+		-e DURATION=$(LOAD_DURATION) -e NO_REUSE=1 -e SUMMARY=load_summary_kind.json \
+		grafana/k6:2.3.0 run -q /scripts/recommend.js
+	while docker ps -q -f name=streamrank-k6-kind | grep -q .; do \
+		echo "$$(date +%T) $$($(KUBE) get hpa streamrank-api --no-headers | awk '{print $$4, "replicas=" $$7}')"; \
+		sleep 15; \
+	done | tee $(K8S_ARTIFACTS)/k8s/hpa-watch.log
+	$(KUBE) describe hpa streamrank-api | sed -n '/Events/,$$p'
+
+kind-down: ## Delete the kind cluster
+	kind delete cluster --name $(KIND_CLUSTER)

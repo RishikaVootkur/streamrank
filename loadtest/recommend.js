@@ -19,6 +19,9 @@ export const options = {
       tags: { phase: 'load' },
     },
   },
+  // Behind a Kubernetes Service, kept-alive connections stay on the pods that existed when
+  // they opened; NO_REUSE=1 opens a new connection per request so new replicas get traffic.
+  noConnectionReuse: __ENV.NO_REUSE === '1',
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
   thresholds: {
     'http_req_duration{phase:load}': ['p(99)<50'],
@@ -39,5 +42,5 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  return { '/data/load_summary.json': JSON.stringify(data, null, 2), stdout: '\n' };
+  return { [`/data/${__ENV.SUMMARY || 'load_summary.json'}`]: JSON.stringify(data, null, 2), stdout: '\n' };
 }

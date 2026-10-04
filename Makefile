@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -26,8 +26,9 @@ format: ## Apply lint fixes and formatting
 typecheck: ## Run mypy in strict mode on src/
 	$(UV) run mypy
 
-test: ## Run unit tests with coverage
-	$(UV) run pytest tests/unit --cov --cov-report=term --cov-fail-under=70
+test: ## Run unit tests with coverage (FAISS tests in their own process; see dev notes)
+	$(UV) run pytest tests/unit --cov --cov-report=
+	$(UV) run pytest tests/faiss --cov --cov-append --cov-report=term --cov-fail-under=70
 
 test-integration: ## Run integration tests against Compose services
 	$(COMPOSE) up -d --wait redis postgres mlflow
@@ -79,3 +80,11 @@ train-retrieval: ## Train the two-tower model on the full split and compare it w
 	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.models.train_retrieval \
 		--split-dir data/split/full --early-stop-split data/split/sample10 \
 		--run-name two_tower_full $(RETRIEVAL_ARGS)
+
+RETRIEVAL_MODEL ?= artifacts/retrieval/two_tower_full
+INDEX_CHOICE ?=
+
+build-index: ## Export vectors, benchmark FAISS indexes, and save the chosen index
+	$(UV) run python -m streamrank.models.export_vectors --model-dir $(RETRIEVAL_MODEL)
+	$(UV) run python -m streamrank.retrieval.benchmark --model-dir $(RETRIEVAL_MODEL) \
+		$(if $(INDEX_CHOICE),--choose "$(INDEX_CHOICE)",)

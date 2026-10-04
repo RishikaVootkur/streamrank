@@ -90,10 +90,65 @@ def test_numpy_features_match_polars(with_profile: bool, with_stats: bool) -> No
     )
     table = ItemTable.build(
         np.arange(1, n_items + 1),
-        item_stats,
+        item_stats.sample(fraction=1.0, shuffle=True, seed=1),  # row order must not matter
         m["year"].cast(pl.Float64).fill_null(np.nan).to_numpy(),
         genres,
     )
     got = request_features(rows, scores, user, profile, items=table, now_ts=NOW)
     assert got.shape == expected.shape
     np.testing.assert_allclose(got, expected, rtol=1e-6, atol=1e-6, equal_nan=True)
+
+
+def test_rejects_unsorted_candidates_and_misaligned_tables() -> None:
+    rng = np.random.default_rng(1)
+    stats = _item_stats(10, rng)
+    genres = np.zeros((10, len(GENRES)), dtype=np.float32)
+    table = ItemTable.build(np.arange(1, 11), stats, np.full(10, 2000.0), genres)
+    with pytest.raises(ValueError, match="score order"):
+        request_features(np.array([0, 1]), np.array([0.1, 0.9]), {}, None, items=table, now_ts=NOW)
+    with pytest.raises(ValueError, match="catalog order"):
+        ItemTable.build(np.arange(1, 11), stats, np.full(9, 2000.0), genres)
+    with pytest.raises(pl.exceptions.ComputeError):
+        ItemTable.build(
+            np.arange(1, 11), pl.concat([stats, stats.head(1)]), np.full(10, 2000.0), genres
+        )
+
+
+def test_items_without_movie_rows_match_offline_nulls() -> None:
+    rng = np.random.default_rng(2)
+    movies = _movies(20, rng)
+    stats = _item_stats(20, rng)
+    has_movie = np.ones(20, dtype=bool)
+    has_movie[[3, 7]] = False
+    kept = movies.filter(~pl.col("item_id").is_in([4, 8]))
+    rows = np.arange(20)
+    scores = np.linspace(1, 0, 20)
+    cand = pl.DataFrame(
+        {
+            "user_id": [1] * 20,
+            "item_id": rows + 1,
+            "retrieval_score": scores,
+            "retrieval_rank": rows + 1,
+            "label": [0] * 20,
+            "n_relevant": [1] * 20,
+        }
+    )
+    empty_user = pl.DataFrame({"user_id": [1]}, schema={"user_id": pl.Int64})
+    empty_prof = pl.DataFrame({"user_id": [1]}, schema={"user_id": pl.Int64}).with_columns(
+        user_mean_year=pl.lit(None, pl.Float64),
+        **{f"ug_{g}": pl.lit(None, pl.Float64) for g in GENRES},
+    )
+    expected = build_features(cand, empty_user, stats, empty_prof, kept, cutoff_ts=NOW)
+    m = movies.sort("item_id")
+    genres = np.array(
+        [[1.0 if g in gs else 0.0 for g in GENRES] for gs in m["genres"].to_list()],
+        dtype=np.float32,
+    )
+    genres[~has_movie] = 0
+    year = m["year"].cast(pl.Float64).fill_null(np.nan).to_numpy().copy()
+    year[~has_movie] = np.nan
+    table = ItemTable.build(np.arange(1, 21), stats, year, genres, has_movie)
+    got = request_features(rows, scores, {}, None, items=table, now_ts=NOW)
+    np.testing.assert_allclose(
+        got, expected.select(FEATURES).to_numpy(), rtol=1e-6, atol=1e-6, equal_nan=True
+    )

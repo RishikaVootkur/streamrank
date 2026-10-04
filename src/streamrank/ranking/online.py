@@ -35,9 +35,25 @@ class ItemTable:
         stats: pl.DataFrame,
         year: FloatArray,
         genres: npt.NDArray[np.float32],
+        has_movie: npt.NDArray[np.bool_] | None = None,
     ) -> "ItemTable":
-        """Align a stats frame (item_id + ITEM_STATS columns) to the catalog order."""
-        aligned = pl.DataFrame({"item_id": item_ids}).join(stats, on="item_id", how="left")
+        """Align a stats frame (item_id + ITEM_STATS columns) to the catalog order.
+
+        `year`, `genres`, and `has_movie` must already be in catalog order. Items without a
+        movie row get a NaN genre count, as the offline left join produces.
+        """
+        n = item_ids.size
+        if (
+            year.size != n
+            or genres.shape[0] != n
+            or (has_movie is not None and has_movie.size != n)
+        ):
+            raise ValueError("item content arrays must be in catalog order")
+        aligned = pl.DataFrame({"item_id": item_ids}).join(
+            stats, on="item_id", how="left", maintain_order="left", validate="1:1"
+        )
+        if aligned.height != n:
+            raise ValueError("stats must have one row per item")
         cols = {
             c: (
                 aligned[c].cast(pl.Float64).fill_null(np.nan).to_numpy()
@@ -46,7 +62,10 @@ class ItemTable:
             )
             for c in ITEM_STATS
         }
-        return cls(cols, year.astype(np.float64), genres, genres.sum(axis=1).astype(np.float64))
+        n_genres = genres.sum(axis=1).astype(np.float64)
+        if has_movie is not None:
+            n_genres[~has_movie] = np.nan
+        return cls(cols, year.astype(np.float64), genres, n_genres)
 
 
 def _log1p0(x: FloatArray | float) -> FloatArray:
@@ -66,7 +85,13 @@ def request_features(
     items: ItemTable,
     now_ts: int,
 ) -> npt.NDArray[np.float32]:
-    """Feature matrix (len(rows), len(FEATURES)) for one user's candidates, in rank order."""
+    """Feature matrix (len(rows), len(FEATURES)) for one user's candidates, in rank order.
+
+    `rows` must be the retrieval candidates in score order (as exported for training), so
+    position i has retrieval rank i + 1.
+    """
+    if np.any(np.diff(np.asarray(scores, dtype=np.float64)) > 0):
+        raise ValueError("candidates must be in non-increasing score order")
     day = float(SECONDS_PER_DAY)
     n = rows.size
     out = np.empty((n, len(FEATURES)), dtype=np.float64)
@@ -97,5 +122,6 @@ def request_features(
     dot = items.genres[rows].astype(np.float64) @ np.nan_to_num(user_genres.astype(np.float64))
     norm = np.sqrt(n_genres)
     out[:, _INDEX["genre_affinity"]] = np.divide(dot, norm, out=np.zeros(n), where=norm > 0)
+    out[np.isnan(n_genres), _INDEX["genre_affinity"]] = 0.0
     out[:, _INDEX["year_gap"]] = np.abs(year - mean_year)
     return out.astype(np.float32)

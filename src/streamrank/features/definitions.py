@@ -186,3 +186,76 @@ def reference_snapshots(
         for day in snapshot_days({day_of(e.ts) for e in evs}, fs.windows, from_day):
             rows.append({fs.key: key, "snapshot_day": day, **snapshot(fs, evs, day)})
     return rows
+
+
+# Session features: what the user did in the last few minutes, updated by the stream.
+
+SESSION_WINDOW_SECONDS: Final = 30 * 60
+SESSION_FEATURES: Final = (
+    "session_n_events",
+    "session_n_positive",
+    "session_mean_rating",
+    "session_last_item_id",
+    "session_last_ts",
+)
+
+
+def session_snapshot(events: Sequence[Event], as_of: int) -> dict[str, float]:
+    """Session features as of `as_of`: events with as_of - window < ts <= as_of.
+
+    `events` are one user's events in arrival order; the last qualifying event defines
+    `session_last_item_id` and `session_last_ts`.
+    """
+    window = [e for e in events if as_of - SESSION_WINDOW_SECONDS < e.ts <= as_of]
+    if not window:
+        return {
+            "session_n_events": 0.0,
+            "session_n_positive": 0.0,
+            "session_mean_rating": float("nan"),
+            "session_last_item_id": float("nan"),
+            "session_last_ts": float("nan"),
+        }
+    return {
+        "session_n_events": float(len(window)),
+        "session_n_positive": float(sum(e.rating >= POSITIVE_RATING for e in window)),
+        "session_mean_rating": sum(e.rating for e in window) / len(window),
+        "session_last_item_id": float(window[-1].item_id),
+        "session_last_ts": float(window[-1].ts),
+    }
+
+
+@dataclass
+class SessionState:
+    """Incremental session features for one user (the streaming implementation).
+
+    Events must arrive in non-decreasing time order; `update` returns the features as of
+    the new event, equal to `session_snapshot(all_events_so_far, event.ts)`.
+    """
+
+    events: list[tuple[int, int, float]]  # (ts, item_id, rating) inside the window
+
+    def update(self, event: Event) -> dict[str, float]:
+        if self.events and (
+            event.ts < self.events[-1][0]
+            or (event.ts, event.item_id) in {e[:2] for e in self.events}
+        ):
+            # A redelivered or out-of-order event: keep the session as it is.
+            return self.features()
+        self.events.append((event.ts, event.item_id, event.rating))
+        cutoff = event.ts - SESSION_WINDOW_SECONDS
+        self.events = [e for e in self.events if e[0] > cutoff]
+        return self.features()
+
+    def features(self) -> dict[str, float]:
+        """Features as of the latest stored event."""
+        if not self.events:
+            return session_snapshot([], 0)
+        ratings = [r for _, _, r in self.events]
+        last_ts, last_item, _ = self.events[-1]
+        return {
+            "session_n_events": float(len(self.events)),
+            "session_n_positive": float(sum(r >= POSITIVE_RATING for r in ratings)),
+            "session_mean_rating": sum(ratings) / len(ratings),
+            "session_last_item_id": float(last_item),
+            "session_last_ts": float(last_ts),
+        }

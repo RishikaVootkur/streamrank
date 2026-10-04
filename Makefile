@@ -9,7 +9,7 @@ COMPOSE ?= docker compose
 
 
 help: ## List targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
 
 setup: ## Install all dependency groups and git hooks
 	$(UV) sync --all-groups

@@ -153,7 +153,11 @@ def evaluate_grid(
 
 
 def plot(rows: list[dict[str, Any]], path: Path, n_items: int) -> None:
-    """Recall@200 versus p99 latency, one line per index family."""
+    """Recall@200 versus median latency, one line per index build.
+
+    Points within a line follow the search-time parameter in increasing order (efSearch or
+    nprobe); the median is used because tail latency on a shared laptop is noisy.
+    """
     import matplotlib as mpl  # noqa: PLC0415
 
     mpl.use("Agg")
@@ -170,16 +174,16 @@ def plot(rows: list[dict[str, Any]], path: Path, n_items: int) -> None:
         }[s["kind"]]
         families.setdefault(key, []).append(r)
     for key, family in families.items():
-        rs = sorted(family, key=lambda r: r["p99_ms"])
+        rs = family  # grid order: the search-time parameter increases along the line
         marker = "*" if key.startswith("exact") else "o"
         ax.plot(
-            [r["p99_ms"] for r in rs],
+            [r["p50_ms"] for r in rs],
             [r["recall@200_vs_exact"] for r in rs],
             marker=marker,
             label=key,
         )
     ax.set_xscale("log")
-    ax.set_xlabel("p99 latency per query (ms, one thread, log scale)")
+    ax.set_xlabel("median latency per query (ms, one thread, log scale)")
     ax.set_ylabel("recall@200 vs exact")
     ax.set_title(f"FAISS recall versus latency ({n_items:,} items)")
     ax.grid(alpha=0.3)

@@ -1,8 +1,9 @@
-"""The full two-stage system (two-tower + ranker) against EASE on the same users.
+"""The full two-stage system (two-tower + ranker) against EASE and retrieval order.
 
-Scores the ranker on its held-out evaluation users (LightGBM; no PyTorch or FAISS in this
-process), fits EASE on the same training data, and reports paired NDCG@10 and Recall@10
-differences with bootstrap intervals over users.
+On `val`, scores the ranker on its held-out evaluation users. On `test` (the final run),
+scores every warm test user: no stage saw test labels. LightGBM only in this process (no
+PyTorch or FAISS). EASE is fitted on the same history, and paired NDCG@10 and Recall@10
+differences come with bootstrap intervals over users.
 """
 
 import argparse
@@ -22,12 +23,21 @@ from streamrank.models.baselines import EASE
 from streamrank.ranking.features import FEATURES
 
 
-def ranked_metrics(features: pl.DataFrame, booster: lgb.Booster, users: np.ndarray) -> pl.DataFrame:
-    """Per-user NDCG@10 and Recall@10 of the ranker order (relative to all relevant items)."""
+def ranked_metrics(
+    features: pl.DataFrame, booster: lgb.Booster | None, users: np.ndarray
+) -> pl.DataFrame:
+    """Per-user NDCG@10 and Recall@10 of the ranker order (relative to all relevant items).
+
+    With `booster=None`, the retrieval order instead.
+    """
     df = features.filter(pl.col("user_id").is_in(users.tolist())).sort(
         ["user_id", "retrieval_rank"]
     )
-    scores = booster.predict(df.select(FEATURES).to_numpy().astype(np.float32), num_threads=1)
+    if booster is None:
+        scores = -df["retrieval_rank"].to_numpy().astype(np.float64)
+    else:
+        x = df.select(FEATURES).to_numpy().astype(np.float32)
+        scores = np.asarray(booster.predict(x, num_threads=1), dtype=np.float64)
     top = (
         df.with_columns(score=pl.Series(np.asarray(scores)))
         .sort(["user_id", "score", "retrieval_rank"], descending=[False, True, False])
@@ -47,9 +57,9 @@ def ranked_metrics(features: pl.DataFrame, booster: lgb.Booster, users: np.ndarr
     )
 
 
-def ease_metrics(split_dir: Path, users: np.ndarray) -> pl.DataFrame:
+def ease_metrics(split_dir: Path, users: np.ndarray, partition: str = "val") -> pl.DataFrame:
     """Per-user NDCG@10 and Recall@10 of EASE (tuned setting) on the full catalog."""
-    setup = load_setup(split_dir, "val")
+    setup = load_setup(split_dir, partition)
     model = EASE(l2=2000.0, signal="positive")
     model.fit(setup.train)
     t = setup.targets
@@ -67,21 +77,34 @@ def ease_metrics(split_dir: Path, users: np.ndarray) -> pl.DataFrame:
     )
 
 
-def compare(ranker_dir: Path, features_path: Path, split_dir: Path, seed: int) -> dict[str, Any]:
-    users = np.load(ranker_dir / "eval_users.npy")
+def compare(
+    ranker_dir: Path, features_path: Path, split_dir: Path, seed: int, partition: str = "val"
+) -> dict[str, Any]:
+    features = pl.read_parquet(features_path)
+    if partition == "val":
+        users = np.load(ranker_dir / "eval_users.npy")
+    else:
+        users = np.sort(features["user_id"].unique().to_numpy())
     booster = lgb.Booster(model_file=str(ranker_dir / "ranker.txt"))
-    ours = ranked_metrics(pl.read_parquet(features_path), booster, users)
-    ease = ease_metrics(split_dir, users)
-    both = ours.join(ease, on="user_id", suffix="_ease")
+    ours = ranked_metrics(features, booster, users)
+    retrieval = ranked_metrics(features, None, users)
+    ease = ease_metrics(split_dir, users, partition)
+    both = ours.join(ease, on="user_id", suffix="_ease").join(
+        retrieval, on="user_id", suffix="_retrieval"
+    )
     if both.height != users.size:
-        raise ValueError(f"expected {users.size} users on both sides, got {both.height}")
-    out: dict[str, Any] = {"users": both.height}
+        raise ValueError(f"expected {users.size} users on every side, got {both.height}")
+    out: dict[str, Any] = {"partition": partition, "users": both.height}
     for m in ("ndcg@10", "recall@10"):
-        a, b = both[m].to_numpy(), both[f"{m}_ease"].to_numpy()
+        a, b, r = (both[c].to_numpy() for c in (m, f"{m}_ease", f"{m}_retrieval"))
         out[m] = {
-            "two_stage": float(a.mean()),
-            "ease": float(b.mean()),
+            "two_stage": vars(metrics.bootstrap_mean(a, n_resamples=1000, seed=seed)),
+            "ease": vars(metrics.bootstrap_mean(b, n_resamples=1000, seed=seed)),
+            "retrieval": vars(metrics.bootstrap_mean(r, n_resamples=1000, seed=seed)),
             "difference": vars(metrics.paired_difference(a, b, n_resamples=1000, seed=seed)),
+            "lift_over_retrieval": vars(
+                metrics.paired_difference(a, r, n_resamples=1000, seed=seed)
+            ),
         }
     return out
 
@@ -97,9 +120,15 @@ def main(argv: list[str] | None = None) -> None:
         default=s.artifacts_dir / "ranker_features" / "ranker_features_val.parquet",
     )
     p.add_argument("--split-dir", type=Path, default=s.data_dir / "split" / "full")
+    p.add_argument("--partition", default="val", choices=["val", "test"])
+    p.add_argument(
+        "--out", type=Path, default=None, help="default: <ranker-dir>/two_stage_vs_ease.json"
+    )
     args = p.parse_args(argv)
-    result = compare(args.ranker_dir, args.features, args.split_dir, s.seed)
-    (args.ranker_dir / "two_stage_vs_ease.json").write_text(json.dumps(result, indent=2) + "\n")
+    result = compare(args.ranker_dir, args.features, args.split_dir, s.seed, args.partition)
+    out = args.out or args.ranker_dir / "two_stage_vs_ease.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
 
 

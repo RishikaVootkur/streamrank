@@ -245,3 +245,6 @@ def test_ranked_metrics_match_ndcg_definition() -> None:
     expected = (1 / np.log2(4)) / (1 + 1 / np.log2(3))
     assert np.allclose(out["ndcg@10"].to_numpy(), expected, atol=1e-6)
     assert np.allclose(out["recall@10"].to_numpy(), 0.5)
+    # Without a booster the retrieval order is scored directly, giving the same lists.
+    plain = ranked_metrics(df, None, np.arange(20))
+    assert np.allclose(plain["ndcg@10"].to_numpy(), expected, atol=1e-6)

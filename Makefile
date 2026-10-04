@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift final-run report
 
 
 help: ## List targets
@@ -143,3 +143,26 @@ simulate: ## Replay future events and interleave rankers (retrieval vs ranker, p
 
 drift: ## Data drift report: recent rating events against the pre-cutoff window
 	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.monitoring.drift
+
+FINAL_DIR ?= artifacts/final
+# The validation run's settings; early stopping picked epoch 5 of its 10-epoch schedule.
+FINAL_RETRIEVAL_ARGS ?= --recent-window-prob 0.5 --temperature 0.1 --dropout 0.3 \
+	--epochs 10 --stop-after 5
+
+final-run: ## Final run: refit on train + validation, score retrieval, ranker, baselines on test
+	MLFLOW_DISABLE_AGENT_HINT=1 $(UV) run python -m streamrank.models.train_retrieval \
+		--split-dir data/split/full --partition test --run-name two_tower_final \
+		--out-dir $(FINAL_DIR)/retrieval $(FINAL_RETRIEVAL_ARGS)
+	$(UV) run python -m streamrank.models.candidates --model-dir $(FINAL_DIR)/retrieval \
+		--partition test --out-dir $(FINAL_DIR)/candidates
+	$(UV) run python -m streamrank.ranking.build_features --partition test \
+		--candidates-dir $(FINAL_DIR)/candidates --out-dir $(FINAL_DIR)/ranker_features
+	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.two_stage --partition test \
+		--ranker-dir artifacts/ranker \
+		--features $(FINAL_DIR)/ranker_features/ranker_features_test.parquet \
+		--out $(FINAL_DIR)/two_stage_test.json
+	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.eval.run_baselines --partition test \
+		--out-dir $(FINAL_DIR)/baselines
+
+report: ## Write docs/results.md and the README results table from saved results
+	$(UV) run python -m streamrank.report

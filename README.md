@@ -4,6 +4,11 @@ A two-stage movie recommender that serves the next 10 movies for a user in under
 
 Status: work in progress. See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and results.
 
+## Results
+
+<!-- results:begin -->
+<!-- results:end -->
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/), Docker, and GNU Make.

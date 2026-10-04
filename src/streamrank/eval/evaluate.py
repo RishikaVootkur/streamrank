@@ -69,6 +69,7 @@ class EvalResult:
     coverage_at_10: float
     gini_at_10: float
     n_users: int
+    n_cold_users: int
     fit_seconds: float
     recommend_seconds: float
     per_user: dict[str, npt.NDArray[np.float64]] = field(repr=False)
@@ -79,6 +80,7 @@ class EvalResult:
             "model": self.name,
             "params": self.params,
             "n_users": self.n_users,
+            "n_cold_users": self.n_cold_users,
             "coverage@10": self.coverage_at_10,
             "gini@10": self.gini_at_10,
             "fit_seconds": round(self.fit_seconds, 2),
@@ -113,6 +115,7 @@ def evaluate_lists(
         coverage_at_10=metrics.catalog_coverage(recs, setup.train.n_items, 10),
         gini_at_10=metrics.gini_index(recs, setup.train.n_items, 10),
         n_users=int(recs.shape[0]),
+        n_cold_users=targets.n_cold_users,
         fit_seconds=fit_seconds,
         recommend_seconds=recommend_seconds,
         per_user=per_user,

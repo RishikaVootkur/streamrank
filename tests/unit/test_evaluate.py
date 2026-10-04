@@ -87,3 +87,8 @@ def test_recommend_pads_small_catalogs() -> None:
     exclude = sp.csr_array((1, 2), dtype=np.float32)
     recs = recommend(_Fixed(scores), np.array([0]), exclude, 4)
     assert recs.tolist() == [[0, 1, -1, -1]]
+
+
+def test_row_reports_cold_users() -> None:
+    model = _Fixed(np.array([[0, 0, 9, 1], [0, 0, 1, 9]]))
+    assert fit_and_evaluate(model, _setup(), n_resamples=10).row()["n_cold_users"] == 0

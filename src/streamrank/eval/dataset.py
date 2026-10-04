@@ -51,7 +51,7 @@ class EvalTargets:
     user_rows: IntArray  # row indices into TrainData matrices
     relevant: sp.csr_array  # rows aligned with user_rows; columns >= n_items are unreachable
     exclude: sp.csr_array  # rows aligned with user_rows; items seen before the cut
-    n_cold_users: int  # users with eval positives but no history (served by fallback)
+    n_cold_users: int  # users with eval positives but no history; not scored here
 
 
 def _csr(
@@ -88,7 +88,12 @@ def build_train(history: pl.DataFrame, cutoff_ts: int) -> TrainData:
 
 
 def build_targets(train: TrainData, eval_df: pl.DataFrame) -> EvalTargets:
-    """Relevant items (eval positives) for warm users, with their history excluded."""
+    """Relevant items (eval positives) for warm users, with their history excluded.
+
+    Warm users have at least one training interaction. Users with eval positives but no
+    history are counted in `n_cold_users` and left out of these targets: no model here can
+    personalize for them, and the serving layer handles them with a popularity fallback.
+    """
     positives = eval_df.filter(pl.col("label") == 1)
     users = positives["user_id"].unique()
     warm_mask = users.is_in(pl.Series(train.user_ids).implode())

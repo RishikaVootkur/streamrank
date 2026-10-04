@@ -20,7 +20,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --all-groups
       - run: make lint
       - run: make typecheck
 
@@ -31,7 +31,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --all-groups
       - run: make test
 
   integration-tests:
@@ -41,7 +41,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --all-groups
       - run: cp .env.example .env
       - run: make test-integration
       - if: always()

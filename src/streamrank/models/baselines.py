@@ -22,6 +22,10 @@ Signal = Literal["all", "positive"]
 _SECONDS_PER_DAY = 86_400
 # Finite floor for items a model cannot score, so they still rank above excluded (-inf) items.
 _OUTSIDE_SCORE = np.float32(np.finfo(np.float32).min / 2)
+# Weight of the popularity tie-break added to personalized scores. It only decides between
+# items whose scores are equal (for example all zero when a user's input row is empty), so
+# such users get a popularity ranking instead of one in arbitrary index order.
+_TIE_BREAK = 1e-6
 
 
 class Recommender(Protocol):
@@ -41,11 +45,19 @@ def _signal_matrix(train: TrainData, signal: Signal) -> sp.csr_array:
     return train.interactions if signal == "all" else train.positives
 
 
+def _tie_break(train: TrainData) -> FloatArray:
+    """Popularity scaled into [0, _TIE_BREAK] for breaking ties between equal scores."""
+    counts = np.asarray(train.interactions.sum(axis=0), dtype=np.float64).ravel()
+    out: FloatArray = (_TIE_BREAK * counts / max(counts.max(), 1.0)).astype(np.float32)
+    return out
+
+
 @dataclass
 class _Fitted:
-    """Holds the training user matrix that score() needs."""
+    """Holds the training user matrix and the popularity tie-break that score() needs."""
 
     matrix: sp.csr_array | None = None
+    tie_break: FloatArray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
 
     def rows(self, user_rows: IntArray) -> sp.csr_array:
         if self.matrix is None:
@@ -135,12 +147,15 @@ class ItemKNN:
         self._sim = sp.csr_array(
             (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, n)
         )
-        self._users = _Fitted(_signal_matrix(train, self.signal).astype(np.float32))
+        self._users = _Fitted(
+            _signal_matrix(train, self.signal).astype(np.float32), _tie_break(train)
+        )
 
     def score(self, user_rows: IntArray) -> FloatArray:
         if self._sim is None:
             raise RuntimeError("call fit() first")
-        out: FloatArray = (self._users.rows(user_rows) @ self._sim).toarray().astype(np.float32)
+        scores = (self._users.rows(user_rows) @ self._sim).toarray().astype(np.float32)
+        out: FloatArray = scores + self._users.tie_break
         return out
 
 
@@ -169,17 +184,19 @@ class EASE:
         gram = (xk.T @ xk).toarray()
         gram[np.diag_indices_from(gram)] += self.l2
         p = scipy.linalg.inv(gram, overwrite_a=True, check_finite=False)
-        b = p / (-np.diag(p))
-        b[np.diag_indices_from(b)] = 0.0
-        self._weights = b.astype(np.float32)
+        p /= -np.diag(p)  # in place: the item-by-item matrices dominate memory
+        p[np.diag_indices_from(p)] = 0.0
+        self._weights = p.astype(np.float32)
         self._kept = kept
         self._n_items = x.shape[1]
-        self._users = _Fitted(sp.csr_array(sp.csc_array(x.astype(np.float32))[:, kept]))
+        self._users = _Fitted(
+            sp.csr_array(sp.csc_array(x.astype(np.float32))[:, kept]), _tie_break(train)[kept]
+        )
 
     def score(self, user_rows: IntArray) -> FloatArray:
         if self._weights is None:
             raise RuntimeError("call fit() first")
-        restricted = self._users.rows(user_rows) @ self._weights
+        restricted = self._users.rows(user_rows) @ self._weights + self._users.tie_break
         out = np.full((user_rows.size, self._n_items), _OUTSIDE_SCORE, dtype=np.float32)
         out[:, self._kept] = restricted
         return out
@@ -198,6 +215,7 @@ class ALS:
     name: str = "als"
     _user_factors: FloatArray | None = None
     _item_factors: FloatArray | None = None
+    _tie: FloatArray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
 
     def fit(self, train: TrainData) -> None:
         os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
@@ -214,9 +232,10 @@ class ALS:
         model.fit(x, show_progress=False)
         self._user_factors = np.asarray(model.user_factors, dtype=np.float32)
         self._item_factors = np.asarray(model.item_factors, dtype=np.float32)
+        self._tie = _tie_break(train)
 
     def score(self, user_rows: IntArray) -> FloatArray:
         if self._user_factors is None or self._item_factors is None:
             raise RuntimeError("call fit() first")
-        out: FloatArray = self._user_factors[user_rows] @ self._item_factors.T
+        out: FloatArray = self._user_factors[user_rows] @ self._item_factors.T + self._tie
         return out

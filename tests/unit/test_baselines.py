@@ -109,3 +109,38 @@ def test_personalized_models_beat_popularity(setup: EvalSetup) -> None:
     for model in (ItemKNN(neighbors=100), EASE(l2=50.0)):
         recall = fit_and_evaluate(model, setup, n_resamples=50).metrics["recall@50"].mean
         assert recall > pop, model.name
+
+
+def _negatives_only_user() -> EvalSetup:
+    # User 4 rated only item 13 (low), so its positive-signal row is empty.
+    history = pl.DataFrame(
+        {
+            "user_id": [1, 1, 2, 2, 3, 4],
+            "item_id": [10, 11, 11, 12, 11, 13],
+            "rating": [5.0, 5.0, 5.0, 4.0, 5.0, 2.0],
+            "ts": [1, 2, 3, 4, 5, 6],
+        }
+    )
+    train = build_train(history, cutoff_ts=100)
+    return EvalSetup(
+        train=train,
+        targets=build_targets(train, history.head(0).with_columns(label=pl.lit(1, pl.Int8))),
+        partition="val",
+    )
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        ItemKNN(signal="positive"),
+        EASE(l2=1.0, signal="positive"),
+        ALS(factors=4, iterations=2, signal="positive"),
+    ],
+    ids=lambda m: m.name,
+)
+def test_empty_rows_fall_back_to_popularity_order(model: object) -> None:
+    setup = _negatives_only_user()
+    model.fit(setup.train)  # type: ignore[attr-defined]
+    scores = model.score(np.array([3]))[0]  # type: ignore[attr-defined]
+    # Item 11 is the most watched; ties among zero scores break by popularity.
+    assert int(np.argmax(scores)) == 1

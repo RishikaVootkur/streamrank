@@ -2,7 +2,7 @@
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -41,3 +41,6 @@ data: ## Download MovieLens 32M and verify its checksum
 
 ingest: ## Validate raw CSV files and write Parquet tables
 	$(UV) run python -m streamrank.data.ingest
+
+split: ingest ## Create the global temporal split and the 10% user sample
+	$(UV) run python -m streamrank.data.split --stats-doc docs/data-split.md

@@ -11,7 +11,7 @@ Each milestone is tracked by a GitHub issue and lands through one or more pull r
 - [x] M4 Two-tower retrieval with sequential user tower
 - [x] M5 FAISS index
 - [x] M6 LightGBM LambdaMART ranker
-- [ ] M7 Serving API
+- [x] M7 Serving API
 - [x] M8 Streaming session features
 - [ ] M9 Online test simulation
 - [ ] M10 Observability, demo UI, Kubernetes
@@ -72,6 +72,10 @@ HNSW (M = 16, efSearch = 400) over 65,723 item vectors: recall@200 against exact
 ### LambdaMART ranker (M6)
 
 On 2,908 held-out validation users (their validation labels were never used to train or tune the ranker or the retrieval model): NDCG@10 rises from 0.1155 [0.1088, 0.1222] in retrieval order to 0.1504 [0.1435, 0.1576], a lift of **+0.0349 [+0.0298, +0.0401]**. Against EASE on the same users the two-stage system is level: NDCG@10 difference +0.0033 [-0.0044, +0.0108]. Top features by mean |SHAP|: retrieval rank, 30-day item popularity, genre affinity ([plot](ranker-shap.png), [ADR 0008](adr/0008-lambdamart-ranker.md)).
+
+### Serving API (M7)
+
+FastAPI with the ONNX user tower, HNSW retrieval, Feast online features, the ONNX ranker, and a popularity fallback. k6 against the container (2 CPUs, one worker): **p99 6.7 ms at 250 requests per second** with no errors (p99 97 ms at 300). Server-side median 4.8 ms. `make smoke` passes. See [load-test.md](load-test.md) and [ADR 0009](adr/0009-serving-architecture.md).
 
 ## Blocked or changed
 

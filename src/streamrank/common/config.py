@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     seed: int = 42
     log_level: str = "INFO"
 
+    mlflow_tracking_uri: str = "http://localhost:5001"
+
     redis_host: str = "localhost"
     redis_port: int = 6379
 

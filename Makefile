@@ -30,7 +30,7 @@ test: ## Run unit tests with coverage
 	$(UV) run pytest tests/unit --cov --cov-report=term --cov-fail-under=70
 
 test-integration: ## Run integration tests against Compose services
-	$(COMPOSE) up -d --wait redis postgres
+	$(COMPOSE) up -d --wait redis postgres mlflow
 	$(UV) run pytest tests/integration -m integration
 
 up: ## Start the local stack

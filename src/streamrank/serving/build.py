@@ -114,8 +114,11 @@ def run(
             "profiles.npz",
             "fallback.npy",
             "user_tower.onnx",
+            "item_vectors.npy",
             "items.faiss",
-            "ranker.txt",
+            "items.json",
+            "ranker.onnx",
+            "loadtest_users.json",
             "serving.json",
         )
     ]

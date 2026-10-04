@@ -29,3 +29,15 @@ def test_item_and_profile_arrays() -> None:
     assert prof["genres"].shape == (2, len(GENRES))
     assert prof["genres"][0, GENRES.index("Drama")] == 1.0
     assert prof["mean_year"][0] == 2000.0
+
+
+def test_manifest_lists_only_files_the_builder_writes() -> None:
+    import inspect  # noqa: PLC0415
+
+    from streamrank.serving import build  # noqa: PLC0415
+
+    source = inspect.getsource(build.run)
+    listed = source.split("outputs = [", 1)[1].split("]", 1)[0]
+    for name in ("ranker.onnx", "item_vectors.npy", "loadtest_users.json", "items.json"):
+        assert f'"{name}"' in listed
+    assert '"ranker.txt"' not in listed

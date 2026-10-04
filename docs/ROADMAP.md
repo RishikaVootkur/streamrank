@@ -89,6 +89,10 @@ Team-draft interleaving over replayed validation events, 2,000 held-out users, 2
 
 The ranker's offline NDCG lift does not carry over to next-event replay; the sanity pair shows the test can detect a real difference.
 
+### Kubernetes (M10)
+
+Helm chart on a one-node kind cluster: API Deployment, Redis started from a snapshot of the serving state, and a CPU HPA (60% of a 500m request, 1 to 4 replicas). Under k6 at 150 requests per second from one replica, the HPA scaled 1 to 4 within 45 s of saturation and settled at 3; 36,020 requests, no errors or restarts, median 6.1 ms (p99 2.5 s from the minute before scale-out). Steady state at 4 replicas: p99 16.5 ms. Load testing led to a cap on concurrent engine work in the API. See [ADR 0012](adr/0012-kubernetes-deployment.md).
+
 ## Blocked or changed
 
 - M4: the two-tower retrieval model does not beat EASE beyond the interval (Recall@100 -0.030 [-0.037, -0.023]). Tried: recent-biased training windows (+0.025 on the sample), temperature and dropout tuning, inclusion-probability log-Q. The gap is analyzed in ADR 0006: it ties EASE for very short and very long histories and loses most for moderate histories and recently active users. The two-tower model stays as the retrieval stage because EASE cannot be served from a nearest-neighbor index or embed new items, and the ranker stage recovers ranking quality.

@@ -101,9 +101,7 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=main.__doc__)
     p.add_argument("--model-dir", type=Path, required=True)
     p.add_argument("--split-dir", type=Path, default=settings.data_dir / "split" / "full")
-    p.add_argument(
-        "--out", type=Path, default=settings.artifacts_dir / "serving" / "user_tower.onnx"
-    )
+    p.add_argument("--out", type=Path, default=settings.artifacts_dir / "onnx" / "user_tower.onnx")
     p.add_argument("--check-users", type=int, default=512)
     args = p.parse_args(argv)
     setup = load_setup(args.split_dir, "val")

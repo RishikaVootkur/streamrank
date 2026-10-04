@@ -31,9 +31,15 @@ train = [
     "torch>=2.14.1",
 ]
 serve = [
+    "faiss-cpu>=1.15.1",
     "fastapi>=0.142.2",
+    "feast[redis]>=0.66.0",
     "onnxruntime>=1.30.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+    "opentelemetry-instrumentation-fastapi>=0.66b0",
+    "opentelemetry-sdk>=1.45.0",
     "prometheus-client>=0.21,<0.25",
+    "redis>=6.4,<8",
     "uvicorn>=0.54.0",
 ]
 stream = [

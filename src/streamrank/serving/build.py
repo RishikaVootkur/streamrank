@@ -24,6 +24,7 @@ from streamrank.ranking.features import user_profiles
 from streamrank.serving.state import bulk_load
 
 FALLBACK_SIZE = 200
+LOADTEST_USERS = 5000
 
 
 def item_arrays(item_ids: np.ndarray, movies: pl.DataFrame) -> dict[str, np.ndarray]:
@@ -87,8 +88,13 @@ def run(
     shutil.copy(index_dir / "items.json", out_dir / "items.json")
     if not np.array_equal(np.load(index_dir / "item_ids.npy"), train.item_ids):
         raise ValueError("the FAISS index was built for a different catalog")
-    shutil.copy(ranker_dir / "ranker.txt", out_dir / "ranker.txt")
+    shutil.copy(ranker_dir / "ranker.onnx", out_dir / "ranker.onnx")
     users = bulk_load(client, train.user_ids, build_sequences(train), max_len=max_len)
+    # Request mix for load tests: validation users (those the evaluation scores).
+    rng = np.random.default_rng(0)
+    pool = train.user_ids[setup.targets.user_rows]
+    sample = rng.choice(pool, size=min(LOADTEST_USERS, pool.size), replace=False)
+    (out_dir / "loadtest_users.json").write_text(json.dumps([int(u) for u in sample]))
     meta = {
         "cutoff_ts": train.cutoff_ts,
         "max_len": max_len,

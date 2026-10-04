@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-18s %s\n", $$1, $$2}'
@@ -34,12 +34,13 @@ test: ## Run unit tests with coverage (FAISS and LightGBM tests in their own pro
 test-integration: ## Run integration tests against Compose services
 	$(COMPOSE) up -d --wait redis postgres mlflow
 	$(UV) run pytest tests/integration -m integration
+	$(UV) run pytest tests/serving -m integration
 
-up: ## Start the local stack
-	$(COMPOSE) up -d --wait
+up: ## Start the local stack, including the API (needs serving artifacts)
+	$(COMPOSE) --profile serving up -d --wait --build
 
 down: ## Stop the local stack
-	$(COMPOSE) down
+	$(COMPOSE) --profile serving --profile load down
 
 data: ## Download MovieLens 32M and verify its checksum
 	$(UV) run python -m streamrank.data.download
@@ -106,3 +107,13 @@ export-onnx: ## Export the trained user tower to ONNX and check parity with PyTo
 serving-artifacts: ## Collect serving artifacts and load user state into Redis
 	$(COMPOSE) up -d --wait redis
 	$(UV) run python -m streamrank.serving.build
+
+smoke: ## End-to-end request against the running stack
+	$(UV) run python -m streamrank.serving.smoke
+
+LOAD_RATE ?= 100
+LOAD_DURATION ?= 2m
+
+load: ## Load test the API with k6 (constant arrival rate)
+	LOAD_RATE=$(LOAD_RATE) LOAD_DURATION=$(LOAD_DURATION) \
+		$(COMPOSE) --profile serving --profile load run --rm k6

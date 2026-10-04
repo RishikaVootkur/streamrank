@@ -17,9 +17,11 @@ htmlcov/
 
 # Data and artifacts (MovieLens data must never be committed)
 data/
+!src/streamrank/data/
 artifacts/
 mlruns/
 mlartifacts/
+*.csv
 *.parquet
 *.zip
 ml-32m*/

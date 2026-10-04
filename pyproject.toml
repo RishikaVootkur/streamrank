@@ -88,7 +88,7 @@ files = ["src", "pipelines"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit"]  # FAISS and integration tests run in their own invocations
 pythonpath = ["."]
 markers = [
   "integration: needs the Docker Compose services running",

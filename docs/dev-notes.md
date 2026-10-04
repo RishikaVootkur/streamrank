@@ -50,3 +50,11 @@ Redpanda 19092, Redpanda Console 8080, Streamlit 8501, Postgres 5432.
   `docker compose up redis`; Redis address from `REDIS_CONNECTION_STRING`.
 - Feast caps pandas < 3, redis-py < 8, prometheus-client < 0.25 for the whole lock.
 - Online reads: `streamrank.features.store.online_features(store, USER_REFS, "user_id", ids)`.
+
+## Native library conflicts (macOS)
+- PyTorch, FAISS, and LightGBM each bundle their own OpenMP runtime. On macOS any two of them
+  in one process abort or hang (`OMP: Error #15`); `KMP_DUPLICATE_LIB_OK` does not help.
+  On Linux (CI, containers) they coexist.
+- Keep them in separate processes: `export_vectors` (torch) writes `vectors_val.npz`, and
+  `streamrank.retrieval` (FAISS) never imports torch. FAISS tests live in `tests/faiss/`
+  and `make test` runs them in a second pytest process.

@@ -240,6 +240,32 @@ def _optimizer(
     return opt, sched
 
 
+def load_recommender(
+    model_dir: Path,
+    train: TrainData,
+    movies: pl.DataFrame,
+    tags: pl.DataFrame,
+    device: torch.device | None = None,
+) -> TwoTowerRecommender:
+    """Rebuild a trained recommender from `model_dir` for the same training data.
+
+    Sequences and item content are recomputed from `train`; the weights come from
+    `model.pt` and the hyperparameters from the manifest.
+    """
+    manifest = verify_outputs(model_dir)
+    model_cfg = TwoTowerConfig(**manifest["config"]["model"])
+    train_cfg = TrainConfig(**manifest["config"]["train"])
+    rec = TwoTowerRecommender(model_cfg, train_cfg, movies, tags, device=device or pick_device())
+    rec._seqs = build_sequences(train)
+    rec.content = build_item_content(train.item_ids, movies, tags, cutoff_ts=train.cutoff_ts)
+    counts = torch.from_numpy(np.asarray(train.positives.sum(axis=0)).ravel()) + 1.0
+    model = TwoTower(train.n_items, rec.content, counts, model_cfg)
+    state = torch.load(model_dir / "model.pt", map_location="cpu", weights_only=True)
+    model.load_state_dict(state)
+    rec.model = model.to(rec.device).eval()
+    return rec
+
+
 def split_targets(
     targets: EvalTargets, user_ids: IntArray, train: TrainData
 ) -> tuple[EvalTargets, EvalTargets]:

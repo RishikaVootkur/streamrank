@@ -5,7 +5,7 @@ export REDIS_CONNECTION_STRING
 UV ?= uv
 COMPOSE ?= docker compose
 
-.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate
+.PHONY: help setup lint format typecheck test test-integration up down data ingest split baselines retrieval-segments evaluate spark-image test-spark features-offline features train-retrieval build-index train-ranker export-onnx serving-artifacts smoke load stream stream-parity two-stage-report simulate drift
 
 
 help: ## List targets
@@ -140,3 +140,6 @@ simulate: ## Replay future events and interleave rankers (retrieval vs ranker, p
 	$(UV) run python -m streamrank.simulation.simulate --pair retrieval,ranker
 	$(UV) run python -m streamrank.simulation.simulate --pair retrieval,ranker --daily-features
 	$(UV) run python -m streamrank.simulation.simulate --pair popular,retrieval
+
+drift: ## Data drift report: recent rating events against the pre-cutoff window
+	OPENBLAS_NUM_THREADS=1 $(UV) run python -m streamrank.monitoring.drift

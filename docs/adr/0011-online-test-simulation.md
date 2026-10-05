@@ -32,7 +32,7 @@ Option 2, as a replay simulator (`make simulate`).
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | Retrieval | Retrieval + ranker | Frozen at cutoff | 1,140 | 1,343 / 1,191 | +0.018 [-0.030, +0.065] | tie |
 | Retrieval | Retrieval + ranker | Refreshed daily | 1,109 | 1,368 / 1,121 | -0.027 [-0.072, +0.020] | tie |
-| Recent popularity | Retrieval | Frozen at cutoff | 1,025 | 650 / 1,518 | **+0.371 [+0.324, +0.420]** | **retrieval** |
+| Recent popularity | Retrieval | Frozen at cutoff | 1,025 | 650 / 1,518 | **+0.371 [+0.323, +0.417]** | **retrieval** |
 
 - The method has power: the two-tower model beats recent popularity on 70% of credited clicks, an interval far from zero.
 - The ranker's offline lift does not carry over to next-event replay: retrieval order and the ranker tie (hit rate@10 0.104 against 0.101 frozen, 0.099 daily). Refreshing batch features daily does not change that, so stale features are not the explanation.

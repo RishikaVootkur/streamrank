@@ -63,7 +63,7 @@ hnsw(M=16,efC=200,ef=400): recall@200 against exact search 0.9992, single-query 
 
 | A | B | Batch features | Preference for B | Winner |
 | --- | --- | --- | ---: | --- |
-| popular | retrieval | frozen at cutoff | +0.371 [+0.324, +0.420] | retrieval |
+| popular | retrieval | frozen at cutoff | +0.371 [+0.323, +0.417] | retrieval |
 | retrieval | ranker | daily | -0.027 [-0.072, +0.020] | tie |
 | retrieval | ranker | frozen at cutoff | +0.018 [-0.030, +0.065] | tie |
 

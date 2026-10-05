@@ -124,7 +124,8 @@ serving-artifacts: ## Collect serving artifacts and load user state into Redis
 	$(UV) run python -m streamrank.serving.build --model-dir $(RETRIEVAL_MODEL)
 
 smoke: ## End-to-end request against the running stack
-	$(UV) run python -m streamrank.serving.smoke
+	$(UV) run python -m streamrank.serving.smoke \
+		--users $(or $(ARTIFACTS_HOST_DIR),artifacts)/serving/loadtest_users.json
 
 LOAD_RATE ?= 100
 LOAD_DURATION ?= 2m
